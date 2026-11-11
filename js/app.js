@@ -113,6 +113,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   els.xlsxFrom.addEventListener('change', syncXlsxControls);
   els.xlsxTo.addEventListener('change', syncXlsxControls);
 
+  // Enter di kolom terakhir (ucapan) = submit
+  els.ucapanInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  });
+
   // Kolom 6 "Language Improvement Section" -> otomatis huruf kapital
   els.pengabsenInput.addEventListener('input', (e) => {
     const el = e.target;
@@ -429,7 +437,7 @@ async function handleSubmit() {
     tingkat: selectedMember.tingkat || tingkatFromKelas(selectedMember.kelas),
     kamar: selectedMember.kamar,
     bahasa: els.bahasaInput.value,
-    ucapan: els.ucapanInput.value.trim(),
+    ucapan: els.ucapanInput.value.trim() || 'None',
   };
 
   // Pengaman: kalau API belum terhubung, data berisiko hilang -> konfirmasi dulu
@@ -440,11 +448,6 @@ async function handleSubmit() {
       'Lanjut kirim(absensi)?'
     );
     if (!lanjut) return;
-  }
-
-  if (!payload.ucapan) {
-    showToast('Isi ucapan dulu!', true);
-    return;
   }
 
   // Cek absen ganda hari ini (berdasarkan log yang sudah dimuat)

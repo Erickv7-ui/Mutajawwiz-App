@@ -174,7 +174,7 @@ async function apiPost(payload) {
       kelas: payload.kelas || '',
       kamar: payload.kamar || '',
       bahasa: payload.bahasa || 'Indonesian',
-      ucapan: payload.ucapan || '',
+      ucapan: payload.ucapan || 'None',
     };
     logs.push(rec);
     if (!saveLocalLogs(logs)) throw new Error('Penyimpanan browser penuh / diblokir');

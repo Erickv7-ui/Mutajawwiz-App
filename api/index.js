@@ -192,7 +192,7 @@ module.exports = async (req, res) => {
         tingkat: body.tingkat || '',
         kamar: body.kamar || '',
         bahasa: body.bahasa || 'Indonesian',
-        ucapan: body.ucapan || '',
+        ucapan: body.ucapan || 'None',
       };
       try {
         await put(`${LOG_PREFIX}${date}/${id}.json`, JSON.stringify(rec), {
