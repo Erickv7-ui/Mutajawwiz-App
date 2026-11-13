@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=26">
-  <link rel="stylesheet" href="css/theme.css?v=26">
+  <link rel="stylesheet" href="css/app.css?v=27">
+  <link rel="stylesheet" href="css/theme.css?v=27">
   <script>
     /* Terapkan tema sebelum paint supaya tidak berkedip */
     (function () {
@@ -1061,6 +1061,16 @@
                 <button id="btn-admin-export" class="btn btn-cyan">Unduh Semua Data (CSV)</button>
                 <button id="btn-admin-clear" class="btn btn-red">Hapus Semua Data</button>
               </div>
+              <p class="text-[11px] font-bold text-black/60 mt-2">"Hapus Semua Data" mengosongkan log absensi &amp; denda di cloud + lokal. Database anggota (724) &amp; LIS (28) tetap aman.</p>
+            </div>
+            <div class="border-t-2 border-black pt-3 mt-3">
+              <div class="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
+                <div class="flex-1">
+                  <label class="lbl mb-0">Bersihkan Cache Peramban</label>
+                  <p class="text-[11px] font-bold text-black/60">Buang semua cache lokal (log duplikat, tarif lama, sesi) dan muat ulang dari cloud.</p>
+                </div>
+                <button id="btn-clear-cache" class="btn btn-yellow text-xs whitespace-nowrap">🧹 Bersihkan Cache</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1205,12 +1215,12 @@
     </div>
   </div>
 
-  <script src="js/api.js?v=26"></script>
-  <script src="js/xlsx-writer.js?v=26"></script>
-  <script src="js/rekap.js?v=26"></script>
-  <script src="js/theme.js?v=26"></script>
-  <script src="js/db.js?v=26"></script>
-  <script src="js/auth.js?v=26"></script>
-  <script src="js/spa.js?v=26"></script>
+  <script src="js/api.js?v=27"></script>
+  <script src="js/xlsx-writer.js?v=27"></script>
+  <script src="js/rekap.js?v=27"></script>
+  <script src="js/theme.js?v=27"></script>
+  <script src="js/db.js?v=27"></script>
+  <script src="js/auth.js?v=27"></script>
+  <script src="js/spa.js?v=27"></script>
 </body>
 </html>
