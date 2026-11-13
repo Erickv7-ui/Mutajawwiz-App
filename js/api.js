@@ -79,6 +79,7 @@
     post: post,
 
     ping: function () { return get('ping'); },
+    bootstrap: function () { return get('bootstrap'); },
     master: function () { return get('master'); },
     lis: function () { return get('lis'); },
     logs: function (from, to) { return get('logs', { from: from, to: to }); },

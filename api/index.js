@@ -320,6 +320,30 @@ module.exports = async (req, res) => {
       }
     }
 
+    // BOOTSTRAP: gabung master + lis + logs + pay dalam satu request ( hemat 2 cold start )
+    if (action === 'bootstrap') {
+      try {
+        const [anggotaRes, lisRes, logsRes, payRes] = await Promise.all([
+          loadTable('anggota').catch(() => SEED_ANGGOTA),
+          loadTable('lis').catch(() => SEED_LIS),
+          readAllLogsFast().catch(() => []),
+          readPayments().catch(() => ({})),
+        ]);
+        const merged = mergePayments(logsRes, payRes);
+        merged.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+        const payload = {
+          ok: true,
+          master: { count: anggotaRes.length, data: anggotaRes },
+          lis: { count: lisRes.length, data: lisRes },
+          logs: { count: merged.length, data: merged },
+        };
+        res.setHeader('Cache-Control', 'public, max-age=20, stale-while-revalidate=60');
+        return send(res, 200, payload);
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Bootstrap gagal: ' + err.message });
+      }
+    }
+
     return send(res, 404, { ok: false, error: 'Action tidak dikenal' });
   }
 

@@ -347,6 +347,56 @@
       });
     }
 
+    /** Hanya file statis dari repo (CDN) — cepat, tanpa nunggu cloud */
+    async function loadMasterDataStatic() {
+      try {
+        const [sm, sl] = await Promise.allSettled([
+          fetch('data/master.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null),
+          fetch('data/lis.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null),
+        ]);
+        if (sm.status === 'fulfilled' && Array.isArray(sm.value) && sm.value.length) {
+          MASTER_ANGGOTA = sm.value.map(normalizeMember);
+          cacheMaster(MASTER_ANGGOTA);
+        }
+        if (sl.status === 'fulfilled' && Array.isArray(sl.value)) {
+          LIS_ANGGOTA = sl.value.map(normalizeMember);
+          cacheLis(LIS_ANGGOTA);
+        }
+      } catch (e) { console.warn('[static] gagal:', e.message); }
+      if (!MASTER_ANGGOTA.length) MASTER_ANGGOTA = readCachedMaster().map(normalizeMember);
+      if (!LIS_ANGGOTA.length) LIS_ANGGOTA = readCachedLis().map(normalizeMember);
+      try { refreshPengabsenList(); } catch (e) {}
+      return true;
+    }
+
+    /** Terapkan log dari cloud: gabung dengan cache lokal, dedup by id + konten */
+    function applyCloudLogs(cloudData) {
+      const cloud = Array.isArray(cloudData) ? cloudData : [];
+      const contentKey = (l) => [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
+        (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
+      const merged = [];
+      const seenId = new Set();
+      const seenContent = new Set();
+      [...cloud, ...(allLogs || [])].forEach(l => {
+        if (!l) return;
+        const id = l.id_log || l.id;
+        const ck = contentKey(l);
+        if (id && seenId.has(id)) return;
+        if (seenContent.has(ck)) return;
+        if (id) seenId.add(id);
+        seenContent.add(ck);
+        merged.push(l);
+      });
+      allLogs = merged.filter(l => l && (l.id_log || l.id));
+      try { enrichLogs(); } catch (e) {}
+      saveLogs();
+      try { refreshPengabsenList(); } catch (e) {}
+      try { renderDashboard(); } catch (e) {}
+      try { renderTagihan(); } catch (e) {}
+      try { renderLaporan(); } catch (e) {}
+      return true;
+    }
+
     /** Muat master anggota + LIS: cloud dulu, fallback cache lokal */
     async function loadMasterData() {
       const api = cloudOn() ? window.LISApi : null;
@@ -1528,14 +1578,39 @@
       setInterval(updateClock, 1000);
       setConnectionBadge('local');
 
-      // 2. tarik data cloud (master, LIS, log)
+      // 2. Static CDN + cloud bootstrap PARALEL — UI render dari statik duluan
       try {
-        await loadMasterData();
+        const cloudPromise = (cloudOn() ? window.LISApi.bootstrap().catch(e => { console.warn('[bootstrap] cloud:', e.message); return null; }) : Promise.resolve(null));
+
+        // Static fetch duluan ( cepat )
+        await loadMasterDataStatic();
         refreshMemberBadges();
         initDatalist();
         renderMassList();
-        const cloudLogs = await loadLogsFromCloud();
-        setConnectionBadge(cloudLogs ? 'cloud' : 'local');
+        renderDashboard();
+        setConnectionBadge('local');
+
+        // Cloud menyusul di background
+        const cloud = await cloudPromise;
+        if (cloud && cloud.ok) {
+          if (cloud.master && Array.isArray(cloud.master.data) && cloud.master.data.length) {
+            MASTER_ANGGOTA = cloud.master.data.map(normalizeMember);
+            cacheMaster(MASTER_ANGGOTA);
+          }
+          if (cloud.lis && Array.isArray(cloud.lis.data)) {
+            LIS_ANGGOTA = cloud.lis.data.map(normalizeMember);
+            cacheLis(LIS_ANGGOTA);
+          }
+          if (cloud.logs && Array.isArray(cloud.logs.data)) {
+            applyCloudLogs(cloud.logs.data);
+          }
+          refreshMemberBadges();
+          initDatalist();
+          renderMassList();
+          renderDashboard();
+          refreshPengabsenList();
+          setConnectionBadge('cloud');
+        }
       } catch (err) {
         console.warn('[bootstrap]', err.message);
         initDatalist();
