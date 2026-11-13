@@ -1,11 +1,11 @@
 /* spa.js — logika SPA v3 (dipisah dari index.html, lalu dipatch untuk cloud + panel 6) */
-// ===================== MASTER DATA (diisi dari cloud / cache lokal) =====================
+//  MASTER DATA (diisi dari cloud / cache lokal) 
     let MASTER_ANGGOTA = [];
     let LIS_ANGGOTA = [];
     const MASTER_CACHE_KEY = 'lis2627_master_cache';
     const LIS_CACHE_KEY = 'lis2627_lis_cache';
 
-    // ===================== STATE & STORAGE ENGINE =====================
+    //  STATE & STORAGE ENGINE 
     const STORAGE_KEY = 'lis2627_logs_v3';
     const API_KEY = 'lis2627_api_url';
     const PIN_STORAGE_KEY = 'lis2627_admin_pin';
@@ -59,7 +59,7 @@
     let pendingLunasKey = null;
     let pendingConfirmCallback = null;
 
-    // ===================== PIN PROTECTION FOR ADMIN SESSION =====================
+    //  PIN PROTECTION FOR ADMIN SESSION 
     function syncAdminLockUI() {
       const inpIndo = document.getElementById('tarif-indonesian');
       const inpJava = document.getElementById('tarif-javanese');
@@ -225,7 +225,7 @@
       safeSetStorage(STORAGE_KEY, JSON.stringify(allLogs));
     }
 
-    // ===================== CLOUD SYNC =====================
+    //  CLOUD SYNC 
     function cacheMaster(list) {
       try { safeSetStorage(MASTER_CACHE_KEY, JSON.stringify(list)); } catch {}
     }
@@ -366,7 +366,7 @@
       }
     }
 
-    // ===================== SIDEBAR & NAVIGATION =====================
+    //  SIDEBAR & NAVIGATION 
     function openSidebarMobile() {
       const backdrop = document.getElementById('sidebar-backdrop');
       document.getElementById('sidebar').classList.remove('-translate-x-full');
@@ -421,7 +421,7 @@
       if (history.replaceState) history.replaceState(null, '', '#' + pageId);
     }
 
-    // ===================== CONSOLIDATED BILLS ENGINE =====================
+    //  CONSOLIDATED BILLS ENGINE 
     function getTarif() {
       return {
         Indonesian: Math.max(0, parseInt(document.getElementById('tarif-indonesian')?.value) || 2000),
@@ -474,7 +474,7 @@
       return Object.values(map).sort((a, b) => b.tgl.localeCompare(a.tgl));
     }
 
-    // ===================== RENDER DASHBOARD =====================
+    //  RENDER DASHBOARD 
     function renderDashboard() {
       const today = getToday();
       const todayLogs = allLogs.filter(l => l.tgl === today);
@@ -648,7 +648,7 @@
       });
     }
 
-    // ===================== INPUT & PIKET =====================
+    //  INPUT & PIKET 
     function initDatalist() {
       const dl = document.getElementById('inp-datalist');
       dl.innerHTML = MASTER_ANGGOTA.map(a =>
@@ -863,7 +863,7 @@
       }
     }
 
-    // ===================== PEMBAYARAN & DENDA =====================
+    //  PEMBAYARAN & DENDA 
     function renderTagihan() {
       const allBills = getConsolidatedTagihan();
       const lunasBills = allBills.filter(b => b.lunas);
@@ -1084,7 +1084,7 @@
       );
     }
 
-    // ===================== CUSTOM CONFIRM MODAL =====================
+    //  CUSTOM CONFIRM MODAL 
     function openConfirmModal(title, desc, onConfirm) {
       document.getElementById('confirm-modal-title').textContent = title;
       document.getElementById('confirm-modal-desc').textContent = desc;
@@ -1101,7 +1101,7 @@
       pendingConfirmCallback = null;
     }
 
-    // ===================== LAPORAN & SURAT PANGGILAN =====================
+    //  LAPORAN & SURAT PANGGILAN 
     function renderLaporan() {
       const rayons = ['Madinah', 'Ampel (1)', 'Ampel (2)', 'Gunung Jati', 'MTQ', 'RL'];
       const tbody = document.getElementById('lap-rayon-table');
@@ -1192,8 +1192,8 @@
       modal.classList.add('flex');
     }
 
-    // ===================== INITIALIZATION =====================
-    // ===================== PUBLIC HOOKS (dipakai rekap.js & db.js) =====================
+    //  INITIALIZATION 
+    //  PUBLIC HOOKS (dipakai rekap.js & db.js) 
     window.LIS = {
       get logs() { return allLogs; },
       set logs(v) { allLogs = Array.isArray(v) ? v : []; },
@@ -1305,6 +1305,11 @@
         const pop = document.getElementById('info-popup');
         if (pop) { pop.classList.toggle('hidden'); pop.classList.toggle('flex'); }
       });
+
+      // Popup PIN admin saat pertama buka web (sesi belum terbuka)
+      if (!isAdminUnlocked) {
+        setTimeout(() => { if (!isAdminUnlocked) openPinModal(); }, 350);
+      }
 
       // Quick actions
       document.getElementById('btn-input-absensi').addEventListener('click', () => switchPage('input'));
