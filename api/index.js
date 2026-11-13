@@ -123,6 +123,20 @@ function logContentKey(l) {
 }
 
 /** Buang duplikat konten, simpan yang paling awal */
+/** Isi rayon & tingkat dari kamar/kelas kalau kosong (database lama) */
+function enrichLog(l) {
+  const rayons = ['Madinah', 'Ampel (1)', 'Ampel (2)', 'Gunung Jati', 'MTQ', 'RL'];
+  if (!l.rayon && l.kamar) {
+    const hit = rayons.find(rn => String(l.kamar).startsWith(rn) || String(l.kamar).includes(rn));
+    if (hit) l.rayon = hit;
+  }
+  if (!l.tingkat && l.kelas) {
+    const m = /^(\d|[IV]+)\b/.exec(String(l.kelas));
+    if (m) l.tingkat = m[1];
+  }
+  return l;
+}
+
 function dedupeLogs(arr) {
   const sorted = [...arr].sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
   const seen = new Set();
@@ -139,7 +153,8 @@ function dedupeLogs(arr) {
 async function readAllLogsFast() {
   const saved = await readJsonOrNull(LOGS_DB);
   if (Array.isArray(saved)) {
-    const clean = dedupeLogs(saved);
+    const enriched = saved.map(enrichLog);
+    const clean = dedupeLogs(enriched);
     if (clean.length !== saved.length) {
       try { await writeJson(LOGS_DB, clean); } catch (e) { console.warn('auto-dedupe simpan gagal:', e.message); }
     }
