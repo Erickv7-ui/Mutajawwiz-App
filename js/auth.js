@@ -2,126 +2,141 @@
 (function () {
   'use strict';
 
-  const PASS_KEY = 'lis2627_web_pass';
-  const AUTH_KEY = 'lis2627_authed';
-  const DEFAULT_PASS = '123456';
+  var PASS_KEY = 'lis2627_web_pass_v2';
+  var AUTH_KEY = 'lis2627_authed';
+  var DEFAULT_PASS = '123456';
 
-  async function sha256Hex(str) {
-    const enc = new TextEncoder();
-    const buf = await crypto.subtle.digest('SHA-256', enc.encode(str));
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  /* Hash sederhana, tidak butuh crypto.subtle (aman di http/file://) */
+  function hash(str) {
+    var h1 = 0x811c9dc5, h2 = 0x01000193;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      h1 = (h1 ^ c) * 16777619 >>> 0;
+      h2 = (h2 + c * (i + 7)) >>> 0;
+    }
+    return h1.toString(16) + '-' + h2.toString(16) + '-' + str.length.toString(16);
   }
 
-  async function getStoredHash() {
-    const h = localStorage.getItem(PASS_KEY);
+  function storedHash() {
+    var h = localStorage.getItem(PASS_KEY);
     if (h) return h;
-    const def = await sha256Hex(DEFAULT_PASS);
-    localStorage.setItem(PASS_KEY, def);
+    var def = hash(DEFAULT_PASS);
+    try { localStorage.setItem(PASS_KEY, def); } catch (e) {}
     return def;
   }
 
+  function $(id) { return document.getElementById(id); }
   function show(el) { if (el) el.classList.remove('hidden'); }
   function hide(el) { if (el) el.classList.add('hidden'); }
 
-  function toggleGate(on) {
-    const gate = document.getElementById('login-gate');
-    if (!gate) return;
+  function gate(on) {
+    var g = $('login-gate');
+    if (!g) return;
     if (on) {
-      gate.classList.remove('hidden');
+      g.classList.remove('hidden');
+      g.style.display = 'flex';
       document.body.style.overflow = 'hidden';
     } else {
-      gate.classList.add('hidden');
+      g.classList.add('hidden');
+      g.style.display = 'none';
       document.body.style.overflow = '';
     }
   }
 
-  async function doLogin() {
-    const inp = document.getElementById('gate-pass');
-    const err = document.getElementById('gate-error');
-    const btn = document.getElementById('gate-btn');
-    const val = (inp ? inp.value : '').trim();
-    if (!val) { if (err) { err.textContent = 'Password wajib diisi.'; show(err); } return; }
+  function setErr(msg) {
+    var e = $('gate-error');
+    if (e) { e.textContent = msg || ''; if (msg) show(e); else hide(e); }
+  }
+
+  function doLogin() {
+    var inp = $('gate-pass');
+    var btn = $('gate-btn');
+    var val = inp ? String(inp.value || '').trim() : '';
+    if (!val) { setErr('Password wajib diisi.'); return; }
     if (btn) { btn.disabled = true; btn.textContent = 'MEMERIKSA...'; }
     try {
-      const stored = await getStoredHash();
-      const inputHash = await sha256Hex(val);
-      if (inputHash !== stored) {
-        if (err) { err.textContent = 'Password salah.'; show(err); }
+      var stored = storedHash();
+      if (hash(val) !== stored) {
+        setErr('Password salah.');
         if (inp) { inp.value = ''; inp.focus(); }
       } else {
-        sessionStorage.setItem(AUTH_KEY, '1');
-        toggleGate(false);
-        if (err) hide(err);
+        try { sessionStorage.setItem(AUTH_KEY, '1'); } catch (e) {}
+        setErr('');
+        gate(false);
       }
     } catch (e) {
-      if (err) { err.textContent = 'Terjadi kesalahan.'; show(err); }
+      setErr('Error: ' + (e && e.message ? e.message : 'tidak diketahui'));
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
     }
   }
 
-  async function doChangePass() {
-    const oldIn = document.getElementById('gate-old');
-    const newIn = document.getElementById('gate-new');
-    const confIn = document.getElementById('gate-confirm');
-    const err = document.getElementById('gate-change-error');
-    const ok = document.getElementById('gate-change-ok');
-    const oldVal = (oldIn ? oldIn.value : '').trim();
-    const newVal = (newIn ? newIn.value : '').trim();
-    const confVal = (confIn ? confIn.value : '').trim();
-    if (!oldVal || !newVal || !confVal) { if (err) { err.textContent = 'Semua kolom wajib diisi.'; show(err); } hide(ok); return; }
-    if (newVal !== confVal) { if (err) { err.textContent = 'Password baru tidak cocok.'; show(err); } hide(ok); return; }
+  function doChangePass() {
+    var oldIn = $('gate-old'), newIn = $('gate-new'), confIn = $('gate-confirm');
+    var err = $('gate-change-error'), ok = $('gate-change-ok');
+    var oldVal = oldIn ? String(oldIn.value || '').trim() : '';
+    var newVal = newIn ? String(newIn.value || '').trim() : '';
+    var confVal = confIn ? String(confIn.value || '').trim() : '';
+    hide(ok);
+    if (!oldVal || !newVal || !confVal) { if (err) { err.textContent = 'Semua kolom wajib diisi.'; show(err); } return; }
+    if (newVal !== confVal) { if (err) { err.textContent = 'Password baru tidak cocok.'; show(err); } return; }
+    if (hash(oldVal) !== storedHash()) { if (err) { err.textContent = 'Password lama salah.'; show(err); } return; }
     try {
-      const stored = await getStoredHash();
-      if (await sha256Hex(oldVal) !== stored) {
-        if (err) { err.textContent = 'Password lama salah.'; show(err); } hide(ok); return;
-      }
-      localStorage.setItem(PASS_KEY, await sha256Hex(newVal));
-      if (err) hide(err);
+      localStorage.setItem(PASS_KEY, hash(newVal));
+      hide(err);
       if (ok) { ok.textContent = 'Password berhasil diganti.'; show(ok); }
       if (oldIn) oldIn.value = '';
       if (newIn) newIn.value = '';
       if (confIn) confIn.value = '';
     } catch (e) {
-      if (err) { err.textContent = 'Gagal mengganti password.'; show(err); } hide(ok);
+      if (err) { err.textContent = 'Gagal menyimpan password.'; show(err); }
     }
   }
 
   function init() {
-    const gate = document.getElementById('login-gate');
-    if (!gate) return;
-    // sudah login?
+    var g = $('login-gate');
+    if (!g) return;
+
+    var already = false;
+    try { already = sessionStorage.getItem(AUTH_KEY) === '1'; } catch (e) {}
+    gate(!already);
+
+    // Reset password darurat: buka web dengan ?resetpass=1
     try {
-      if (sessionStorage.getItem(AUTH_KEY) === '1') { toggleGate(false); return; }
+      var qp = new URLSearchParams(location.search);
+      if (qp.get('resetpass') === '1') {
+        localStorage.removeItem(PASS_KEY);
+        try { sessionStorage.removeItem(AUTH_KEY); } catch (e) {}
+        gate(true);
+      }
     } catch (e) {}
-    toggleGate(true);
 
-    const btn = document.getElementById('gate-btn');
-    const inp = document.getElementById('gate-pass');
-    const toggle = document.getElementById('gate-toggle-change');
-    const changeBox = document.getElementById('gate-change-box');
-    const changeBtn = document.getElementById('gate-change-btn');
-    const backBtn = document.getElementById('gate-back-btn');
-
-    if (btn) btn.addEventListener('click', doLogin);
+    var btn = $('gate-btn');
+    var inp = $('gate-pass');
+    if (btn) btn.onclick = function (ev) { if (ev) ev.preventDefault(); doLogin(); };
     if (inp) {
-      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
-      setTimeout(() => inp.focus(), 100);
+      inp.onkeydown = function (ev) { if (ev && ev.key === 'Enter') { ev.preventDefault(); doLogin(); } };
+      setTimeout(function () { try { inp.focus(); } catch (e) {} }, 120);
     }
-    if (toggle && changeBox) {
-      toggle.addEventListener('click', function () {
-        changeBox.classList.toggle('hidden');
-        toggle.textContent = changeBox.classList.contains('hidden') ? 'Ganti Password' : 'Tutup';
-      });
+
+    var toggle = $('gate-toggle-change');
+    var box = $('gate-change-box');
+    if (toggle && box) {
+      toggle.onclick = function () {
+        box.classList.toggle('hidden');
+        toggle.textContent = box.classList.contains('hidden') ? 'Ganti Password' : 'Tutup';
+      };
     }
-    if (changeBtn) changeBtn.addEventListener('click', doChangePass);
-    if (backBtn) backBtn.addEventListener('click', function () {
-      toggleGate(true);
-      if (inp) { inp.value = ''; inp.focus(); }
-    });
+    var cbtn = $('gate-change-btn');
+    if (cbtn) cbtn.onclick = function (ev) { if (ev) ev.preventDefault(); doChangePass(); };
+    var back = $('gate-back-btn');
+    if (back) back.onclick = function () { gate(true); if (inp) { inp.value = ''; inp.focus(); } };
   }
 
-  window.LISAuth = { logout: function () { sessionStorage.removeItem(AUTH_KEY); location.reload(); } };
+  window.LISAuth = {
+    logout: function () { try { sessionStorage.removeItem(AUTH_KEY); } catch (e) {} location.reload(); },
+    reset: function () { try { localStorage.removeItem(PASS_KEY); sessionStorage.removeItem(AUTH_KEY); } catch (e) {} location.reload(); }
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
