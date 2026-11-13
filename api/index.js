@@ -188,6 +188,7 @@ module.exports = async (req, res) => {
       const table = action === 'lis' ? 'lis' : 'anggota';
       try {
         const data = await loadTable(table);
+        res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
         return send(res, 200, { ok: true, table, count: data.length, data });
       } catch (err) {
         const seed = table === 'lis' ? SEED_LIS : SEED_ANGGOTA;

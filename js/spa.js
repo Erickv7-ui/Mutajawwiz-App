@@ -326,24 +326,20 @@
       const api = cloudOn() ? window.LISApi : null;
       let fromCloud = false;
       if (api) {
-        try {
-          const res = await api.master();
-          if (res && Array.isArray(res.data) && res.data.length) {
-            MASTER_ANGGOTA = res.data.map(normalizeMember);
-            cacheMaster(MASTER_ANGGOTA);
-            fromCloud = true;
-          }
-        } catch (err) {
-          console.warn('[master] cloud gagal:', err.message);
+        // master & lis paralel, jangan berurutan
+        const [mRes, lRes] = await Promise.allSettled([api.master(), api.lis()]);
+        if (mRes.status === 'fulfilled' && mRes.value && Array.isArray(mRes.value.data) && mRes.value.data.length) {
+          MASTER_ANGGOTA = mRes.value.data.map(normalizeMember);
+          cacheMaster(MASTER_ANGGOTA);
+          fromCloud = true;
+        } else if (mRes.status === 'rejected') {
+          console.warn('[master] cloud gagal:', mRes.reason && mRes.reason.message);
         }
-        try {
-          const res = await api.lis();
-          if (res && Array.isArray(res.data)) {
-            LIS_ANGGOTA = res.data.map(normalizeMember);
-            cacheLis(LIS_ANGGOTA);
-          }
-        } catch (err) {
-          console.warn('[lis] cloud gagal:', err.message);
+        if (lRes.status === 'fulfilled' && lRes.value && Array.isArray(lRes.value.data)) {
+          LIS_ANGGOTA = lRes.value.data.map(normalizeMember);
+          cacheLis(LIS_ANGGOTA);
+        } else if (lRes.status === 'rejected') {
+          console.warn('[lis] cloud gagal:', lRes.reason && lRes.reason.message);
         }
       }
       if (!MASTER_ANGGOTA.length) MASTER_ANGGOTA = readCachedMaster().map(normalizeMember);
@@ -367,12 +363,23 @@
         allLogs = Object.values(byId).filter(l => l && (l.id_log || l.id));
         saveLogs();
         refreshPengabsenList();
-        // Backfill: dorong log lokal yang belum ada di cloud (maks 300 per muat)
-        const cloudIds = new Set(cloud.map(l => l.id_log || l.id));
-        const missing = allLogs.filter(l => !cloudIds.has(l.id_log || l.id)).slice(0, 300);
-        for (const rec of missing) {
-          try { await api.save(rec); } catch (e) { console.warn('[backfill]', e.message); break; }
-        }
+        // Backfill di latar belakang: sekali per sesi, tidak menahan UI
+        try {
+          if (sessionStorage.getItem('lis2627_backfilled') !== '1') {
+            sessionStorage.setItem('lis2627_backfilled', '1');
+            const cloudIds = new Set(cloud.map(l => l.id_log || l.id));
+            const missing = allLogs.filter(l => !cloudIds.has(l.id_log || l.id)).slice(0, 40);
+            if (missing.length) {
+              (async () => {
+                for (let i = 0; i < missing.length; i += 4) {
+                  const batch = missing.slice(i, i + 4);
+                  await Promise.allSettled(batch.map(r => api.save(r)));
+                }
+                console.info('[backfill] ' + missing.length + ' log dikirim ke cloud');
+              })();
+            }
+          }
+        } catch (e) { /* sessionStorage diblokir */ }
         return true;
       } catch (err) {
         console.warn('[logs] cloud gagal:', err.message);
