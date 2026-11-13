@@ -208,6 +208,67 @@
       updateTarifDisplayBadges();
     }
 
+    /** Key localStorage website lama (Mutajawwiz-Application / v1) */
+    const LEGACY_STORAGE_KEYS = ['absensi_logs_local'];
+
+    /** Normalisasi record log lama supaya kompatibel dengan model baru */
+    function normalizeLegacyLog(r) {
+      const ts = r.timestamp || '';
+      const id = r.id || r.id_log || ('LOG-' + (ts || Date.now()));
+      let tgl = r.tgl || '';
+      let waktu = r.waktu || '';
+      if (ts) {
+        const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(ts);
+        if (m) { tgl = tgl || m[1]; waktu = waktu || m[2]; }
+      }
+      return {
+        id,
+        tgl,
+        waktu,
+        timestamp: ts,
+        stambuk: r.stambuk || '',
+        nama: r.nama || '',
+        label: r.label || r.kelas || '',
+        kelas: r.kelas || r.label || '',
+        tingkat: r.tingkat || '',
+        rayon: r.rayon || '',
+        kamar: r.kamar || '',
+        bahasa: r.bahasa || 'Indonesian',
+        ucapan: r.ucapan || '',
+        pengabsen: r.pengabsen || 'Petugas Piket',
+        lunas: !!r.lunas,
+        tgl_lunas: r.tgl_lunas || '',
+        penerima: r.penerima || '',
+      };
+    }
+
+    /** Ambil log dari key website lama lalu gabungkan (tanpa hapus apa pun) */
+    function migrateLegacyLogs() {
+      const existing = new Set(allLogs.map(l => String(l.id || l.id_log || '')));
+      let added = 0;
+      for (const key of LEGACY_STORAGE_KEYS) {
+        let raw = '';
+        try { raw = safeGetStorage(key) || ''; } catch { raw = ''; }
+        if (!raw) continue;
+        let arr = [];
+        try { arr = JSON.parse(raw); } catch { arr = []; }
+        if (!Array.isArray(arr)) continue;
+        for (const r of arr) {
+          if (!r || !r.nama) continue;
+          const rec = normalizeLegacyLog(r);
+          if (existing.has(String(rec.id))) continue;
+          existing.add(String(rec.id));
+          allLogs.push(rec);
+          added++;
+        }
+      }
+      if (added) {
+        saveLogs();
+        console.info('[migrasi] ' + added + ' log lama dipulihkan dari website lama');
+      }
+      return added;
+    }
+
     function loadLogs() {
       try {
         const parsed = JSON.parse(safeGetStorage(STORAGE_KEY) || '[]');
@@ -215,6 +276,7 @@
       } catch {
         allLogs = [];
       }
+      try { migrateLegacyLogs(); } catch (err) { console.warn('[migrasi] gagal:', err.message); }
     }
 
     function saveLogs() {
@@ -286,6 +348,8 @@
       }
       if (!MASTER_ANGGOTA.length) MASTER_ANGGOTA = readCachedMaster().map(normalizeMember);
       if (!LIS_ANGGOTA.length) LIS_ANGGOTA = readCachedLis().map(normalizeMember);
+      // Petugas absen datang dari daftar LIS
+      try { refreshPengabsenList(); } catch (e) { console.warn('[pengabsen]', e.message); }
       return fromCloud;
     }
 
@@ -333,11 +397,29 @@
     }
 
     /** Datalist petugas absen: dari nama pengabsen di log lama, bukan dari daftar LIS */
+    /**
+     * Sumber petugas absen = anggota LIS (Language Improvement Section).
+     * Datalist = autofill by keyword (native: mengetik menyaring opsi).
+     * Nama dari log lama tetap dimasukkan sebagai pelengkap agar tidak hilang.
+     */
     function refreshPengabsenList() {
       const dl = document.getElementById('pengabsen-list');
       if (!dl) return;
-      const names = Array.from(new Set((allLogs || []).map(l => (l.pengabsen || '').trim()).filter(Boolean)));
+      const names = [];
+      const seen = new Set();
+      const push = (n) => {
+        const v = String(n || '').trim();
+        if (!v) return;
+        const k = v.toLowerCase();
+        if (seen.has(k)) return;
+        seen.add(k);
+        names.push(v);
+      };
+      (LIS_ANGGOTA || []).forEach(m => push(m.nama));
+      (allLogs || []).forEach(l => push(l.pengabsen));
       dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+      const info = document.getElementById('pengabsen-source');
+      if (info) info.textContent = (LIS_ANGGOTA || []).length + ' petugas LIS';
     }
 
     function updateClock() {
