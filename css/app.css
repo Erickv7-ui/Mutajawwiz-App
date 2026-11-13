@@ -413,3 +413,24 @@
     body { background: #fff !important; }
     .box, .box-flat, .card-band, .btn, .tag { box-shadow: none !important; border-width: 1px !important; }
   }
+
+/* ===== Popup Informasi Aplikasi (tidak bergantung Tailwind) ===== */
+#info-popup {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(10, 10, 12, 0.72);
+  padding: 1rem;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+#info-popup.show { display: flex; }
+#info-popup #info-modal-card {
+  max-width: 32rem;
+  width: 100%;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+@media print { #info-popup { display: none !important; } }
