@@ -182,6 +182,7 @@
 [data-theme="dark"] .tbl tbody tr:hover { background: rgba(242, 217, 140, 0.08); }
 [data-theme="dark"] .tag { color: #F2F1EC; }
 [data-theme="dark"] .modal-card { background: var(--surface); }
+[data-theme="dark"] #info-modal-card { background: #FFFDF8; color: #141414; border-color: #1A1A1A; }
 [data-theme="dark"] .lbl { color: var(--ink-muted); }
 
 /* ================= TRANSISI TEMA ================= */
