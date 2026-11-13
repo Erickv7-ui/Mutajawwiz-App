@@ -1,0 +1,260 @@
+/* rekap.js — Rekap Harian + Export XLSX template resmi (halaman 04 Laporan)
+ * Butuh: api.js (window.LISApi), xlsx-writer.js (window.AbsensiXLSX), spa.js (window.LIS)
+ */
+(function (global) {
+  'use strict';
+
+  var el = function (id) { return document.getElementById(id); };
+  var H = function () { return global.LIS || {}; };
+
+  function today() { return (H().getToday ? H().getToday() : new Date().toISOString().slice(0, 10)); }
+  function rupiah(n) { return H().formatRupiah ? H().formatRupiah(n) : 'Rp' + (n || 0); }
+  function esc(s) { return H().escapeHtml ? H().escapeHtml(s) : String(s == null ? '' : s); }
+  function toast(msg, type) { if (H().showToast) H().showToast(msg, type || 'yellow'); }
+
+  function tarifOf(bahasa) {
+    var t = H().getTarif ? H().getTarif() : { Indonesian: 2000, Javanese: 2000 };
+    return String(bahasa).toLowerCase().indexOf('jav') !== -1 ? t.Javanese : t.Indonesian;
+  }
+
+  function filteredRows() {
+    var logs = H().logs || [];
+    var tgl = (el('rekap-tanggal') && el('rekap-tanggal').value) || today();
+    var q = ((el('rekap-search') && el('rekap-search').value) || '').trim().toLowerCase();
+    var rayon = (el('rekap-rayon') && el('rekap-rayon').value) || '';
+    var bahasa = (el('rekap-bahasa') && el('rekap-bahasa').value) || '';
+
+    return logs.filter(function (l) {
+      if (String(l.tgl || '').slice(0, 10) !== tgl) return false;
+      if (rayon && l.rayon !== rayon) return false;
+      if (bahasa && l.bahasa !== bahasa) return false;
+      if (q) {
+        var hay = (String(l.nama || '') + ' ' + String(l.stambuk || '') + ' ' + String(l.kamar || '')).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    }).sort(function (a, b) {
+      return String(a.timestamp || a.waktu || '').localeCompare(String(b.timestamp || b.waktu || ''));
+    });
+  }
+
+  function render() {
+    var rows = filteredRows();
+    var tbody = el('rekap-table');
+    if (!tbody) return;
+
+    var totalDenda = 0, totalLunas = 0;
+    rows.forEach(function (r) {
+      var d = tarifOf(r.bahasa);
+      totalDenda += d;
+      if (r.lunas) totalLunas += d;
+    });
+
+    var set = function (id, v) { var e = el(id); if (e) e.textContent = v; };
+    set('rekap-total-kasus', rows.length);
+    set('rekap-total-denda', rupiah(totalDenda));
+    set('rekap-total-lunas', rupiah(totalLunas));
+    set('rekap-total-tunggakan', rupiah(totalDenda - totalLunas));
+    set('rekap-count-badge', rows.length + ' entri');
+
+    var empty = el('rekap-empty');
+    if (empty) empty.classList.toggle('hidden', rows.length > 0);
+
+    tbody.innerHTML = rows.map(function (r, i) {
+      var denda = tarifOf(r.bahasa);
+      return '<tr>' +
+        '<td class="font-mono-code text-xs">' + (i + 1) + '</td>' +
+        '<td class="font-mono-code text-xs">' + esc(r.waktu || String(r.timestamp || '').slice(11, 16)) + '</td>' +
+        '<td class="font-mono-code text-xs">' + esc(r.stambuk || '-') + '</td>' +
+        '<td class="font-extrabold">' + esc(r.nama) + '</td>' +
+        '<td class="text-xs">' + esc(r.kelas || '-') + '</td>' +
+        '<td class="text-xs">' + esc(r.kamar || '-') + '</td>' +
+        '<td><span class="tag ' + (r.bahasa === 'Javanese' ? 'bg-[#FFD9DC] text-black' : 'bg-[#A8E6F5] text-black') + '">' + esc(r.bahasa) + '</span></td>' +
+        '<td class="text-xs">' + esc(r.ucapan || '-') + '</td>' +
+        '<td class="text-xs">' + esc(r.pengabsen || '-') + '</td>' +
+        '<td class="font-mono-code text-xs">' + rupiah(denda) + '</td>' +
+        '<td><span class="tag ' + (r.lunas ? 'bg-[#CFF2DA] text-black' : 'bg-[#FFD9DC] text-black') + '">' + (r.lunas ? 'Lunas' : 'Belum') + '</span></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function downloadCSV(rows) {
+    if (!rows.length) { toast('Tidak ada data untuk diunduh.', 'red'); return; }
+    var headers = ['No', 'Stambuk', 'Nama', 'Kelas', 'Kamar', 'Rayon', 'Bahasa', 'Ucapan', 'Petugas', 'Tanggal', 'Waktu', 'Status', 'Penerima'];
+    var lines = [headers.join(',')];
+    rows.forEach(function (r, i) {
+      var cells = [i + 1, r.stambuk || '', r.nama || '', r.kelas || '', r.kamar || '', r.rayon || '',
+        r.bahasa || '', r.ucapan || '', r.pengabsen || '', r.tgl || '', r.waktu || '',
+        r.lunas ? 'Lunas' : 'Belum', r.penerima || ''];
+      lines.push(cells.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','));
+    });
+    var blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'Rekap_Harian_' + ((el('rekap-tanggal') && el('rekap-tanggal').value) || today()) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast(rows.length + ' baris CSV diunduh.', 'green');
+  }
+
+  // ---------- XLSX (template resmi) ----------
+  function roomOf(r) {
+    var raw = String(r.kamar || '').trim();
+    var num = /(\d+)\s*$/.exec(raw);
+    if (num) return num[1];
+    if (/mtq/i.test(raw)) return 'MTQ';
+    return '-';
+  }
+
+  function groupOf(r) {
+    return String(r.bahasa || '').toLowerCase().indexOf('jav') !== -1 ? 'Extreme' : 'Medium';
+  }
+
+  function speakingOf(r) {
+    return String(r.bahasa || '').toLowerCase().indexOf('jav') !== -1 ? 'Javanese Language' : 'Indonesian Language';
+  }
+
+  function buildSheets(rows) {
+    var byDate = {};
+    rows.forEach(function (r) {
+      var d = String(r.tgl || r.timestamp || '').slice(0, 10);
+      (byDate[d] = byDate[d] || []).push(r);
+    });
+    return Object.keys(byDate).sort().map(function (d) {
+      var list = byDate[d].slice().sort(function (a, b) {
+        return String(a.timestamp || '').localeCompare(String(b.timestamp || ''));
+      });
+      return {
+        name: global.AbsensiXLSX.sheetNameForDate(d),
+        rows: list.map(function (r) {
+          return {
+            nama: r.nama,
+            date: d,
+            kelas: r.tingkat || r.kelas || '-',
+            kamar: roomOf(r),
+            speaking: speakingOf(r),
+            group: groupOf(r),
+          };
+        }),
+      };
+    });
+  }
+
+  function downloadXLSX(rows, fname) {
+    if (!global.AbsensiXLSX) { toast('Modul XLSX belum termuat.', 'red'); return; }
+    if (!rows.length) { toast('Tidak ada data untuk diunduh.', 'red'); return; }
+    var sheets = buildSheets(rows);
+    var blob = global.AbsensiXLSX.buildWorkbook(sheets);
+    global.AbsensiXLSX.downloadBlob(blob, fname);
+    toast(sheets.length + ' sheet, ' + rows.length + ' baris diunduh.', 'green');
+  }
+
+  function xlsxHarian() {
+    var rows = filteredRows();
+    downloadXLSX(rows, 'Absensi_' + ((el('rekap-tanggal') && el('rekap-tanggal').value) || today()) + '.xlsx');
+  }
+
+  async function xlsxRange() {
+    var api = H().api ? H().api() : null;
+    var all = el('xlsx-semua') && el('xlsx-semua').checked;
+    var from = (el('xlsx-dari') && el('xlsx-dari').value) || '';
+    var to = (el('xlsx-hingga') && el('xlsx-hingga').value) || '';
+    var kelasF = (el('xlsx-kelas') && el('xlsx-kelas').value) || '';
+    var bahasaF = (el('xlsx-bahasa') && el('xlsx-bahasa').value) || '';
+    var namaF = ((el('xlsx-nama') && el('xlsx-nama').value) || '').trim().toLowerCase();
+    var dupOnly = el('xlsx-dup') && el('xlsx-dup').checked;
+    var pass = ((el('xlsx-pass') && el('xlsx-pass').value) || '').trim();
+    var btn = el('xlsx-btn');
+
+    if (!all && (!from || !to)) { toast('Pilih rentang tanggal dulu.', 'red'); return; }
+    if (!all && from > to) { toast('Tanggal awal harus lebih dulu.', 'red'); return; }
+    if (all && !pass) { toast('Mode semua tanggal butuh password admin.', 'red'); return; }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'MENYIAPKAN...'; }
+    try {
+      var rows = [];
+      if (all) {
+        if (!api) throw new Error('Mode Lokal aktif — data cloud tidak tersedia');
+        var res = await api.exportAll(pass);
+        rows = res.data || [];
+      } else if (api) {
+        var r2 = await api.logs(from, to);
+        rows = r2.data || [];
+      } else {
+        rows = (H().logs || []).filter(function (l) {
+          var d = String(l.tgl || '').slice(0, 10);
+          return d >= from && d <= to;
+        });
+      }
+
+      var filtered = rows.filter(function (r) {
+        if (kelasF && String(r.tingkat || '') !== String(kelasF)) return false;
+        if (bahasaF && r.bahasa !== bahasaF) return false;
+        if (namaF && String(r.nama || '').toLowerCase().indexOf(namaF) === -1) return false;
+        return true;
+      });
+
+      if (dupOnly) {
+        var perDate = {};
+        filtered.forEach(function (r) {
+          var d = String(r.tgl || '').slice(0, 10);
+          var k = String(r.stambuk || r.nama || '').trim().toLowerCase();
+          perDate[d] = perDate[d] || {};
+          perDate[d][k] = (perDate[d][k] || 0) + 1;
+        });
+        filtered = filtered.filter(function (r) {
+          var d = String(r.tgl || '').slice(0, 10);
+          var k = String(r.stambuk || r.nama || '').trim().toLowerCase();
+          return perDate[d][k] > 1;
+        });
+      }
+
+      var stamp = today().replace(/-/g, '');
+      downloadXLSX(filtered, all
+        ? 'Absensi_Semua_Tanggal_' + stamp + '.xlsx'
+        : 'Absensi_' + from + '_sd_' + to + '.xlsx');
+    } catch (err) {
+      toast(err.status === 401 ? 'Password Admin Server salah.' : 'Gagal buat XLSX: ' + err.message, 'red');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Unduh XLSX'; }
+    }
+  }
+
+  function syncAllToggle() {
+    var all = el('xlsx-semua');
+    var on = all && all.checked;
+    ['xlsx-dari', 'xlsx-hingga'].forEach(function (id) {
+      var e = el(id);
+      if (e) e.disabled = on;
+    });
+  }
+
+  function init() {
+    var t = today();
+    ['rekap-tanggal', 'xlsx-dari', 'xlsx-hingga'].forEach(function (id) {
+      var e = el(id);
+      if (e && !e.value) e.value = t;
+    });
+
+    var bind = function (id, ev, fn) {
+      var e = el(id);
+      if (e) e.addEventListener(ev, fn);
+    };
+
+    bind('rekap-btn-tampil', 'click', render);
+    bind('rekap-tanggal', 'change', render);
+    bind('rekap-search', 'input', render);
+    bind('rekap-rayon', 'change', render);
+    bind('rekap-bahasa', 'change', render);
+    bind('rekap-btn-csv', 'click', function () { downloadCSV(filteredRows()); });
+    bind('rekap-btn-xlsx', 'click', xlsxHarian);
+    bind('xlsx-btn', 'click', xlsxRange);
+    bind('xlsx-semua', 'change', syncAllToggle);
+
+    syncAllToggle();
+    render();
+  }
+
+  global.LISRekap = { init: init, render: render, xlsxHarian: xlsxHarian };
+})(window);
