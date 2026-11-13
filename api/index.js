@@ -117,9 +117,34 @@ async function writePayments(map) {
  * Store log cepat: satu blob db/logs.json (bukan ratusan blob per hari).
  * Migrasi otomatis dari blob lama kalau db/logs.json belum ada.
  */
+function logContentKey(l) {
+  return [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
+    (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
+}
+
+/** Buang duplikat konten, simpan yang paling awal */
+function dedupeLogs(arr) {
+  const sorted = [...arr].sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+  const seen = new Set();
+  const out = [];
+  for (const l of sorted) {
+    const k = logContentKey(l);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(l);
+  }
+  return out;
+}
+
 async function readAllLogsFast() {
   const saved = await readJsonOrNull(LOGS_DB);
-  if (Array.isArray(saved)) return saved;
+  if (Array.isArray(saved)) {
+    const clean = dedupeLogs(saved);
+    if (clean.length !== saved.length) {
+      try { await writeJson(LOGS_DB, clean); } catch (e) { console.warn('auto-dedupe simpan gagal:', e.message); }
+    }
+    return clean;
+  }
   // migrasi sekali dari struktur lama logs/YYYY-MM-DD/*.json
   try {
     const blobs = await listAllLogs();
@@ -310,8 +335,12 @@ module.exports = async (req, res) => {
         ucapan: body.ucapan || 'None',
       };
       try {
-        // Simpan ke store cepat (satu blob)
+        // Simpan ke store cepat (satu blob) — cek duplikat dulu
         const allLogs = await readAllLogsFast();
+        const dup = allLogs.some(l => logContentKey(l) === logContentKey(rec));
+        if (dup) {
+          return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date, skipped: true });
+        }
         allLogs.push(rec);
         await writeAllLogsFast(allLogs);
         return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date });
@@ -420,6 +449,31 @@ module.exports = async (req, res) => {
         return send(res, 200, { ok: true, payment: existing });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal toggle hidden: ' + err.message });
+      }
+    }
+
+    // Deduplikasi log (hapus backfill duplikat) — hapus baris yang kontennya sama dengan baris lebih awal
+    if (action === 'dedupe_logs') {
+      if (!isAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah' });
+      }
+      try {
+        const allLogs = await readAllLogsFast();
+        const key = (l) => [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa, (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
+        // Kumpulkan key dari batch asli (terlama per grup) — jangan hapus record asli
+        const sorted = [...allLogs].sort((a, b) =>
+          String(a.timestamp || '').localeCompare(String(b.timestamp || ''))
+        );
+        const firstSeen = new Map(); // key -> earliest record
+        for (const l of sorted) { if (!firstSeen.has(key(l))) firstSeen.set(key(l), l); }
+        const deduped = [];
+        for (const l of sorted) {
+          if (firstSeen.get(key(l)) === l) deduped.push(l);
+        }
+        await writeAllLogsFast(deduped);
+        return send(res, 200, { ok: true, before: allLogs.length, after: deduped.length, removed: allLogs.length - deduped.length });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal dedupe: ' + err.message });
       }
     }
 
