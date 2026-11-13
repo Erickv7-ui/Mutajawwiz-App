@@ -1193,6 +1193,10 @@
       if (!bill) return;
       pendingLunasKey = key;
       pendingLunasHidden = !!hidden;
+      // Auto-fill penerima dari pengabsen aktif
+      const activePengabsen = document.getElementById('inp-pengabsen')?.value?.trim();
+      const penerimaInput = document.getElementById('lunas-penerima-input');
+      if (penerimaInput && activePengabsen) penerimaInput.value = activePengabsen;
       document.getElementById('lunas-modal-info').innerHTML = `
         <div>Santri: <b>${escapeHtml(bill.nama)}</b> (${escapeHtml(bill.kamar)})</div>
         <div>Tanggal Pelanggaran: <b>${escapeHtml(bill.tgl)}</b></div>
