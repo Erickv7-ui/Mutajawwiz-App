@@ -1,0 +1,415 @@
+
+    :root {
+      --bg: #FBF7EF;
+      --surface: #FFFDF8;
+      --ink: #1A1A1A;
+      --ink-muted: #2A2A2A;
+      --border: #1A1A1A;
+      --shadow-hard: 4px 4px 0px #1A1A1A;
+      --shadow-hard-sm: 2.5px 2.5px 0px #1A1A1A;
+      --shadow-hard-lg: 5.5px 5.5px 0px #1A1A1A;
+      --amber: #FFE8A3;
+      --green: #B6EFC8;
+      --cyan: #A8E6F5;
+      --pink: #FFC2D9;
+      --purple: #D6C2FF;
+      --red: #F2707A;
+      --ease-soft: cubic-bezier(0.2, 0.9, 0.3, 1);
+      --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+      --ink-soft: #4A4A4A;
+      --card: #FFFDF8;
+      --paper: #FBF7EF;
+      --shadow: 3px 3px 0px rgba(26, 26, 26, 0.85);
+      --shadow-hover: 4.5px 4.5px 0px rgba(26, 26, 26, 0.9);
+      --radius-card: 10px;
+      --radius-ctl: 8px;
+    }
+
+    html {
+      font-size: 80%; /* Skala 80% (-20% dari ukuran asli) */
+    }
+
+    * {
+      box-sizing: border-box;
+      border-radius: 0px !important;
+    }
+
+    body {
+      margin: 0;
+      background-color: var(--bg);
+      background-image:
+        linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px);
+      background-size: 19px 19px;
+      color: var(--ink);
+      font-family: 'Inter', system-ui, sans-serif;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3, .font-display {
+      font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Hard Neo-Brutalist Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #E8E3D8; border-left: 2px solid #1A1A1A; }
+    ::-webkit-scrollbar-thumb { background: #FFE8A3; border: 2px solid #1A1A1A; }
+    ::-webkit-scrollbar-thumb:hover { background: #A8E6F5; }
+
+    /* Hard Neo-Brutalist Surfaces */
+    .box {
+      background: var(--surface);
+      border: 2.5px solid var(--border);
+      box-shadow: var(--shadow-hard);
+      transition: transform 0.14s var(--ease-soft), box-shadow 0.14s var(--ease-soft), background-color 0.14s ease;
+    }
+
+    .box:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: var(--shadow-hard-lg);
+    }
+
+    .box-flat {
+      background: #FFFDF8;
+      border: 2px solid #1A1A1A;
+    }
+
+    .card-band {
+      border-bottom: 2.5px solid #1A1A1A;
+    }
+
+    /* Typography Helpers */
+    .lbl {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #1A1A1A;
+      margin-bottom: 0.4rem;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.22rem 0.65rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border: 2px solid #1A1A1A;
+      line-height: 1.25;
+      box-shadow: 2px 2px 0px #1A1A1A;
+    }
+
+    /* Hard Brutalist Tactile Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      padding: 0.62rem 1.1rem;
+      font-weight: 800;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border: 2.5px solid #1A1A1A;
+      background: #FFFDF8;
+      color: #1A1A1A;
+      box-shadow: var(--shadow-hard-sm);
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.12s var(--ease-soft), box-shadow 0.12s var(--ease-soft), background-color 0.12s ease;
+    }
+
+    .btn:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 3px 3px 0px #1A1A1A;
+      background: #FFE8A3;
+    }
+
+    .btn:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0px 0px 0px #1A1A1A;
+    }
+
+    .btn-yellow { background: #FFE8A3; color: #1A1A1A; }
+    .btn-yellow:hover { background: #FFD98A; color: #1A1A1A; }
+    .btn-green  { background: #B6EFC8; color: #1A1A1A; }
+    .btn-green:hover  { background: #8FD9A8; color: #1A1A1A; }
+    .btn-cyan   { background: #A8E6F5; color: #1A1A1A; }
+    .btn-cyan:hover   { background: #8FD3EA; color: #1A1A1A; }
+    .btn-pink   { background: #FFC2D9; color: #1A1A1A; }
+    .btn-pink:hover   { background: #FFB0CE; color: #1A1A1A; }
+    .btn-purple { background: #D6C2FF; color: #1A1A1A; }
+    .btn-purple:hover { background: #C3A8FF; color: #1A1A1A; }
+    .btn-red    { background: #F2707A; color: #FFFDF8; }
+    .btn-red:hover    { background: #C04A4A; color: #FFFDF8; }
+    .btn-black  { background: #1A1A1A; color: #FFE8A3; }
+    .btn-black:hover  { background: #1A1A1A; color: #FFFDF8; }
+
+    /* Hard Brutalist Form Fields */
+    .field {
+      width: 100%;
+      padding: 0.62rem 0.85rem;
+      font-size: 0.84rem;
+      font-weight: 700;
+      border: 2.5px solid #1A1A1A;
+      background: #FFFDF8;
+      color: #1A1A1A;
+      outline: none;
+      box-shadow: 2px 2px 0px #1A1A1A;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+    }
+
+    .field:focus {
+      background: #FFF7DC;
+      transform: translate(-1.5px, -1.5px);
+      box-shadow: 3.5px 3.5px 0px #1A1A1A;
+    }
+
+    .field[readonly] {
+      background: #E8E3D8;
+      color: #2A2A2A;
+      box-shadow: none;
+    }
+
+    /* Hard Neo-Brutalist Sidebar Navigation */
+    #sidebar {
+      background: #FFFDF8;
+      color: #1A1A1A;
+      border-right: 2.5px solid #1A1A1A;
+      transition: transform 0.28s var(--ease-soft);
+    }
+
+    .nav-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.65rem;
+      padding: 0.75rem 0.9rem;
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #1A1A1A;
+      background: #FFFDF8;
+      border: 2px solid #1A1A1A;
+      box-shadow: 2px 2px 0px #1A1A1A;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.14s var(--ease-soft);
+    }
+
+    .nav-item:hover {
+      background: #FBF7EF;
+      transform: translate(-1.5px, -1.5px);
+      box-shadow: 3px 3px 0px #1A1A1A;
+    }
+
+    .nav-item.active {
+      background: #FFE8A3;
+      color: #1A1A1A;
+      border: 2.5px solid #1A1A1A;
+      box-shadow: 3px 3px 0px #1A1A1A;
+      transform: translate(-2px, -2px);
+    }
+
+    .nav-item[data-page="input"].active {
+      background: #A8E6F5;
+    }
+
+    .nav-item[data-page="tagihan"].active {
+      background: #B6EFC8;
+    }
+
+    .nav-item[data-page="laporan"].active {
+      background: #FFC2D9;
+    }
+
+    .nav-item[data-page="database"].active {
+      background: #D6C2FF;
+    }
+
+    .nav-item[data-page="settings"].active {
+      background: #D6C2FF;
+    }
+
+    .nav-item .nav-idx {
+      background: #1A1A1A;
+      color: #FFFDF8;
+      border: 1.5px solid #1A1A1A;
+      transition: all 0.14s var(--ease-soft);
+    }
+
+    .nav-item.active .nav-idx {
+      background: #FFFDF8;
+      color: #1A1A1A;
+    }
+
+    /* Smooth Page & Staggered Card Animations */
+    @keyframes pageReveal {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes cardRise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes modalPop {
+      from { opacity: 0; transform: scale(0.95) translateY(8px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-5px); }
+      40%, 80% { transform: translateX(5px); }
+    }
+
+    .page { display: none; }
+    .page.active {
+      display: block;
+      animation: pageReveal 0.28s var(--ease-soft) forwards;
+    }
+
+    .page.active .box {
+      animation: cardRise 0.3s var(--ease-soft) backwards;
+    }
+
+    .page.active > div:nth-child(1) { animation-delay: 0.02s; }
+    .page.active > div:nth-child(2) { animation-delay: 0.05s; }
+    .page.active > div:nth-child(3) { animation-delay: 0.08s; }
+    .page.active > div:nth-child(4) { animation-delay: 0.11s; }
+    .page.active > div:nth-child(5) { animation-delay: 0.14s; }
+
+    .modal-card {
+      animation: modalPop 0.2s var(--ease-soft) forwards;
+    }
+
+    .toast-anim {
+      animation: toastSlideIn 0.22s var(--ease-soft) forwards;
+    }
+
+    .animate-shake {
+      animation: shake 0.3s ease-in-out;
+    }
+
+    /* Hard Neo-Brutalist Tables */
+    table.tbl {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    table.tbl th {
+      background: #1A1A1A;
+      color: #FFE8A3;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.85rem 1rem;
+      text-align: left;
+      border-bottom: 2.5px solid #1A1A1A;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    table.tbl td {
+      padding: 0.78rem 1rem;
+      font-size: 0.83rem;
+      font-weight: 700;
+      color: #1A1A1A;
+      border-bottom: 2px solid #1A1A1A;
+      background: #FFFDF8;
+      transition: background-color 0.1s ease;
+    }
+    table.tbl tr:hover td {
+      background: #FFF7DC;
+    }
+    table.tbl tr.row-lunas td {
+      background: #DDF3E5;
+    }
+    table.tbl tr.row-lunas:hover td {
+      background: #C8EBD6;
+    }
+
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #FFF; background-image: none; }
+      #surat-modal { position: static; background: none; padding: 0; }
+      #surat-modal .box { box-shadow: none; border: 2.5px solid #1A1A1A; }
+    }
+
+
+  /* ================= SOFT NEO-BRUTALISM OVERRIDES ================= */
+  /* border lebih tipis, warna tinta lembut */
+  .border-black, .border-b-2, .border-t-2, .border-l-2, .border-r-2 { border-color: var(--ink) !important; }
+  .border-2 { border-width: 1.5px !important; }
+  .border-\[2\.5px\] { border-width: 1.5px !important; }
+  .border-4 { border-width: 2px !important; }
+  .divide-black > :not([hidden]) ~ :not([hidden]) { border-color: rgba(26,26,26,.35) !important; }
+
+  /* shadow keras diseragamkan jadi lebih lembut */
+  [class*="shadow-["] { box-shadow: var(--shadow) !important; }
+  .shadow-sm, .shadow, .shadow-md { box-shadow: 0 1px 2px rgba(26,26,26,.12) !important; }
+
+  .box, .box-flat, .card-band { border-radius: var(--radius-card); }
+  .box-flat { border: 1.5px solid var(--ink); box-shadow: none; }
+  .card-band { border-bottom: 1.5px solid var(--ink); }
+
+  .btn {
+    border-width: 1.5px;
+    border-radius: var(--radius-ctl);
+    box-shadow: var(--shadow);
+    transition: transform .16s var(--ease), box-shadow .16s var(--ease), background-color .16s var(--ease);
+  }
+  .btn:hover { transform: translate(-1.5px, -1.5px); box-shadow: var(--shadow-hover); }
+  .btn:active { transform: translate(1px, 1px); box-shadow: 1.5px 1.5px 0 rgba(26,26,26,.85); }
+
+  .field {
+    border-width: 1.5px;
+    border-radius: var(--radius-ctl);
+    transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
+  }
+  .field:focus { box-shadow: 0 0 0 3px rgba(168, 230, 245, .55); }
+
+  .tag { border-width: 1.5px; border-radius: 6px; }
+
+  .tbl th, .tbl td { border-color: rgba(26,26,26,.25); }
+  .tbl tbody tr:hover { background: rgba(255, 232, 163, .35); }
+
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid #4E9E6C;
+    outline-offset: 2px;
+  }
+
+  .modal-card { border-radius: 12px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  }
+
+  /* print: surat panggilan bersih hitam-putih */
+  @media print {
+    body { background: #fff !important; }
+    .box, .box-flat, .card-band, .btn, .tag { box-shadow: none !important; border-width: 1px !important; }
+  }

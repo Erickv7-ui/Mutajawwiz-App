@@ -1,0 +1,203 @@
+/* theme.css — Dua tema (Terang / Gelap) untuk Absensi LIS 26-27
+ * Dimuat SETELAH css/app.css. Markup Tailwind tidak diubah: warna arbitrer
+ * dipetakan lewat selector bertema, token :root di-override di [data-theme="dark"].
+ */
+
+:root {
+  --chart-ink: #000000;
+  --chart-grid: #E5E5E5;
+  --chart-border: #000000;
+  --chart-1: #00D2FF;
+  --chart-2: #00E676;
+  --chart-3: #FFE600;
+  --chart-4: #FF66B2;
+  --chart-5: #B388FF;
+  --chart-6: #FF9100;
+  --chart-7: #FF4D4D;
+  --surface-2: #F3EEE2;
+  --ink-invert: #FFFDF8;
+  color-scheme: light;
+}
+
+/* ================= TEMA GELAP: TOKEN ================= */
+[data-theme="dark"] {
+  --bg: #101114;
+  --surface: #191A1E;
+  --surface-2: #212329;
+  --ink: #E9E8E3;
+  --ink-muted: #A8A7A2;
+  --ink-invert: #121316;
+  --paper: #101114;
+  --card: #191A1E;
+  --ink-soft: #A8A7A2;
+  --shadow: 3px 3px 0px rgba(0, 0, 0, 0.85);
+  --shadow-hover: 4.5px 4.5px 0px rgba(0, 0, 0, 0.9);
+  --border: #DCDBD4;
+  --shadow-hard: 4px 4px 0px rgba(0, 0, 0, 0.9);
+  --shadow-hard-sm: 2.5px 2.5px 0px rgba(0, 0, 0, 0.9);
+  --shadow-hard-lg: 5.5px 5.5px 0px rgba(0, 0, 0, 0.9);
+  --amber: #453A15;
+  --green: #1C3B2A;
+  --cyan: #1A3843;
+  --pink: #42222F;
+  --purple: #302648;
+  --red: #55272C;
+  --chart-ink: #E9E8E3;
+  --chart-grid: #2C2F35;
+  --chart-border: #0B0C0E;
+  --chart-1: #6FD3F2;
+  --chart-2: #6FE0A3;
+  --chart-3: #F6E27C;
+  --chart-4: #EE8FBF;
+  --chart-5: #B79BF0;
+  --chart-6: #F5B272;
+  --chart-7: #F28A8A;
+  color-scheme: dark;
+}
+
+/* ================= TEMA GELAP: PERMUKAAN ================= */
+[data-theme="dark"] body {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+}
+[data-theme="dark"] ::-webkit-scrollbar-track { background: #1B1D22; border-left: 2px solid var(--border); }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #4B5A2E; border: 2px solid var(--border); }
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #2C5A6B; }
+
+/* ================= TEMA GELAP: UTILITAS NAMED ================= */
+[data-theme="dark"] .text-black { color: var(--ink) !important; }
+[data-theme="dark"] .text-black\/60 { color: rgba(233, 232, 227, 0.6) !important; }
+[data-theme="dark"] .text-black\/70 { color: rgba(233, 232, 227, 0.7) !important; }
+[data-theme="dark"] .text-black\/75 { color: rgba(233, 232, 227, 0.75) !important; }
+[data-theme="dark"] .text-black\/80 { color: rgba(233, 232, 227, 0.8) !important; }
+[data-theme="dark"] .text-white { color: #F7F6F2 !important; }
+[data-theme="dark"] .bg-white { background-color: var(--surface) !important; }
+[data-theme="dark"] .bg-black { background-color: #08090B !important; }
+[data-theme="dark"] .bg-black\/60, [data-theme="dark"] .bg-black\/65 { background-color: rgba(4, 5, 7, 0.78) !important; }
+[data-theme="dark"] .border-black { border-color: var(--border) !important; }
+[data-theme="dark"] .divide-black > :not([hidden]) ~ :not([hidden]) { border-color: rgba(233, 232, 227, 0.3) !important; }
+
+/* ================= TEMA GELAP: WARNA ARBITRER (bg / text) ================= */
+[data-theme="dark"] .bg-\[\#008A3E\] { background-color: #16402C !important; }
+[data-theme="dark"] .bg-\[\#00D2FF\] { background-color: #113645 !important; }
+[data-theme="dark"] .bg-\[\#00E676\] { background-color: #14402B !important; }
+[data-theme="dark"] .bg-\[\#8F2F2F\] { background-color: #3A1D20 !important; }
+[data-theme="dark"] .bg-\[\#A8E6F5\] { background-color: #1A3843 !important; }
+[data-theme="dark"] .bg-\[\#B388FF\] { background-color: #322553 !important; }
+[data-theme="dark"] .bg-\[\#B6EFC8\] { background-color: #1C3B2A !important; }
+[data-theme="dark"] .bg-\[\#C04A4A\] { background-color: #4A2326 !important; }
+[data-theme="dark"] .bg-\[\#CFEBF7\] { background-color: #1E323C !important; }
+[data-theme="dark"] .bg-\[\#CFF2DA\] { background-color: #21392C !important; }
+[data-theme="dark"] .bg-\[\#D6C2FF\] { background-color: #302648 !important; }
+[data-theme="dark"] .bg-\[\#DC2626\] { background-color: #4E2023 !important; }
+[data-theme="dark"] .bg-\[\#E8E3D8\] { background-color: #2F3238 !important; }
+[data-theme="dark"] .bg-\[\#F2707A\] { background-color: #55272C !important; }
+[data-theme="dark"] .bg-\[\#FBF7EF\] { background-color: #101114 !important; }
+[data-theme="dark"] .bg-\[\#FF4D4D\] { background-color: #582528 !important; }
+[data-theme="dark"] .bg-\[\#FF66B2\] { background-color: #46203A !important; }
+[data-theme="dark"] .bg-\[\#FFC2D9\] { background-color: #42222F !important; }
+[data-theme="dark"] .bg-\[\#FFD9DC\] { background-color: #3B2225 !important; }
+[data-theme="dark"] .bg-\[\#FFE600\] { background-color: #4B3F0C !important; }
+[data-theme="dark"] .bg-\[\#FFE8A3\] { background-color: #453A15 !important; }
+[data-theme="dark"] .bg-\[\#FFF0B8\] { background-color: #2A2619 !important; }
+[data-theme="dark"] .bg-\[\#FFF7DC\] { background-color: #23211B !important; }
+[data-theme="dark"] .bg-\[\#FFF9C4\] { background-color: #262318 !important; }
+[data-theme="dark"] .bg-\[\#FFFDF8\] { background-color: #191A1E !important; }
+[data-theme="dark"] .text-\[\#008A3E\] { color: #6FCB96 !important; }
+[data-theme="dark"] .text-\[\#00D2FF\] { color: #6FD3F2 !important; }
+[data-theme="dark"] .text-\[\#00E676\] { color: #6FE0A3 !important; }
+[data-theme="dark"] .text-\[\#8F2F2F\] { color: #D98A8A !important; }
+[data-theme="dark"] .text-\[\#A8E6F5\] { color: #A6DCEC !important; }
+[data-theme="dark"] .text-\[\#B388FF\] { color: #B79BF0 !important; }
+[data-theme="dark"] .text-\[\#B6EFC8\] { color: #A9E3BF !important; }
+[data-theme="dark"] .text-\[\#C04A4A\] { color: #E08F8F !important; }
+[data-theme="dark"] .text-\[\#CFEBF7\] { color: #BCDCEC !important; }
+[data-theme="dark"] .text-\[\#CFF2DA\] { color: #C2E9CE !important; }
+[data-theme="dark"] .text-\[\#D6C2FF\] { color: #CBB6F5 !important; }
+[data-theme="dark"] .text-\[\#DC2626\] { color: #EE8B8B !important; }
+[data-theme="dark"] .text-\[\#E8E3D8\] { color: #D6D4CC !important; }
+[data-theme="dark"] .text-\[\#F2707A\] { color: #F09AA0 !important; }
+[data-theme="dark"] .text-\[\#FBF7EF\] { color: #E9E8E3 !important; }
+[data-theme="dark"] .text-\[\#FF4D4D\] { color: #F28A8A !important; }
+[data-theme="dark"] .text-\[\#FF66B2\] { color: #EE8FBF !important; }
+[data-theme="dark"] .text-\[\#FFC2D9\] { color: #F2B9CD !important; }
+[data-theme="dark"] .text-\[\#FFD9DC\] { color: #F2C4C8 !important; }
+[data-theme="dark"] .text-\[\#FFE600\] { color: #F6E27C !important; }
+[data-theme="dark"] .text-\[\#FFE8A3\] { color: #F2D98C !important; }
+[data-theme="dark"] .text-\[\#FFF0B8\] { color: #EFDCA6 !important; }
+[data-theme="dark"] .text-\[\#FFF7DC\] { color: #EDE4C6 !important; }
+[data-theme="dark"] .text-\[\#FFF9C4\] { color: #EFE6BC !important; }
+[data-theme="dark"] .text-\[\#FFFDF8\] { color: #F2F1EC !important; }
+
+/* ================= TEMA GELAP: KOMPONEN ================= */
+[data-theme="dark"] #sidebar { background: var(--surface); color: var(--ink); border-right: 2.5px solid var(--border); }
+[data-theme="dark"] .nav-item {
+  background: var(--surface);
+  color: var(--ink);
+  border: 2px solid var(--border);
+  box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.9);
+}
+[data-theme="dark"] .nav-item:hover { background: var(--surface-2); box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.9); }
+[data-theme="dark"] .nav-item.active { background: var(--amber); color: #F2D98C; border-color: var(--border); }
+[data-theme="dark"] .nav-item[data-page="input"].active { background: var(--cyan); color: #A6DCEC; }
+[data-theme="dark"] .nav-item[data-page="tagihan"].active { background: var(--green); color: #A9E3BF; }
+[data-theme="dark"] .nav-item[data-page="laporan"].active { background: var(--pink); color: #F2B9CD; }
+[data-theme="dark"] .nav-item[data-page="database"].active { background: var(--purple); color: #CBB6F5; }
+[data-theme="dark"] .nav-item[data-page="settings"].active { background: var(--purple); color: #CBB6F5; }
+[data-theme="dark"] .nav-item .nav-idx { background: var(--ink); color: var(--ink-invert); border-color: var(--border); }
+[data-theme="dark"] .nav-item.active .nav-idx { background: #F7F6F2; color: #14151A; border-color: #14151A; }
+
+[data-theme="dark"] .btn-yellow { background: var(--amber); color: #F2D98C; }
+[data-theme="dark"] .btn-yellow:hover { background: #524619; color: #F6E3A6; }
+[data-theme="dark"] .btn-green { background: var(--green); color: #A9E3BF; }
+[data-theme="dark"] .btn-green:hover { background: #224733; color: #C2E9CE; }
+[data-theme="dark"] .btn-cyan { background: var(--cyan); color: #A6DCEC; }
+[data-theme="dark"] .btn-cyan:hover { background: #204451; color: #C4E7F3; }
+[data-theme="dark"] .btn-pink { background: var(--pink); color: #F2B9CD; }
+[data-theme="dark"] .btn-pink:hover { background: #4E2838; color: #F7CFDD; }
+[data-theme="dark"] .btn-purple { background: var(--purple); color: #CBB6F5; }
+[data-theme="dark"] .btn-purple:hover { background: #3A2E56; color: #DACCF8; }
+[data-theme="dark"] .btn-red { background: var(--red); color: #F6F5F2; }
+[data-theme="dark"] .btn-red:hover { background: #663036; color: #FFFFFF; }
+[data-theme="dark"] .btn-black { background: #E9E8E3; color: #14151A; }
+[data-theme="dark"] .btn-black:hover { background: #F7F6F2; color: #101114; }
+
+[data-theme="dark"] .btn { background: var(--surface); color: var(--ink); border-color: var(--border); }
+[data-theme="dark"] .btn:hover { background: #262A31; color: var(--ink); }
+[data-theme="dark"] .btn:active { box-shadow: 1.5px 1.5px 0 rgba(0, 0, 0, 0.9); }
+[data-theme="dark"] .box-flat { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .card-band { border-bottom-color: var(--border); }
+[data-theme="dark"] .tag { border-color: var(--border); box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.9); }
+[data-theme="dark"] .field { background: #15171B; color: var(--ink); border-color: var(--border); }
+[data-theme="dark"] .field::placeholder { color: rgba(233, 232, 227, 0.45); }
+[data-theme="dark"] .field:focus { background: #1B1F26; color: var(--ink); box-shadow: 0 0 0 3px rgba(111, 211, 242, 0.35); }
+[data-theme="dark"] .field[readonly] { background: #1B1D22; color: var(--ink-muted); }
+[data-theme="dark"] .tbl th, [data-theme="dark"] .tbl td { border-color: rgba(233, 232, 227, 0.22); }
+[data-theme="dark"] .tbl thead th, [data-theme="dark"] table.tbl th { background: #23252B; color: var(--ink); border-bottom-color: var(--border); }
+[data-theme="dark"] table.tbl td { background: var(--surface); color: var(--ink); border-bottom-color: rgba(233, 232, 227, 0.22); }
+[data-theme="dark"] table.tbl tr:hover td { background: #23252B; }
+[data-theme="dark"] table.tbl tr.row-lunas td { background: #1E3A2A; }
+[data-theme="dark"] table.tbl tr.row-lunas:hover td { background: #244633; }
+[data-theme="dark"] .tbl tbody tr:hover { background: rgba(242, 217, 140, 0.08); }
+[data-theme="dark"] .tag { color: #F2F1EC; }
+[data-theme="dark"] .modal-card { background: var(--surface); }
+[data-theme="dark"] .lbl { color: var(--ink-muted); }
+
+/* ================= TRANSISI TEMA ================= */
+body, #sidebar, .box, .box-flat, .card-band, .nav-item, .btn, .field, .tbl th, .tbl td {
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+/* ================= CETAK: SELALU TERANG ================= */
+@media print {
+  :root, [data-theme="dark"] {
+    --bg: #FFFFFF; --surface: #FFFFFF; --ink: #000000; --ink-muted: #333333;
+    --border: #000000; --shadow-hard: none; --shadow-hard-sm: none; --shadow-hard-lg: none;
+    --amber: #FFFFFF; --green: #FFFFFF; --cyan: #FFFFFF; --pink: #FFFFFF; --purple: #FFFFFF; --red: #FFFFFF;
+  }
+  [data-theme="dark"] body { background-image: none; }
+  [data-theme="dark"] .text-black, [data-theme="dark"] .text-white { color: #000000 !important; }
+  [data-theme="dark"] .bg-white, [data-theme="dark"] .bg-black { background-color: #FFFFFF !important; }
+  [data-theme="dark"] .border-black { border-color: #000000 !important; }
+}
