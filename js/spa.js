@@ -375,30 +375,27 @@
       try {
         const res = await api.logs();
         const cloud = Array.isArray(res.data) ? res.data : [];
-        const byId = {};
-        // Data lokal lama dipertahankan: cloud menimpa hanya kalau id sama
-        (allLogs || []).forEach(l => { byId[l.id_log || l.id] = l; });
-        cloud.forEach(l => { byId[l.id_log || l.id] = l; });
-        allLogs = Object.values(byId).filter(l => l && (l.id_log || l.id));
+        const contentKey = (l) => [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
+          (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
+        // Gabung lokal + cloud, dedup berdasarkan id DAN konten
+        const merged = [];
+        const seenId = new Set();
+        const seenContent = new Set();
+        // cloud dulu (otoritatif), lalu lokal yang belum ada
+        [...cloud, ...(allLogs || [])].forEach(l => {
+          if (!l) return;
+          const id = l.id_log || l.id;
+          const ck = contentKey(l);
+          if (id && seenId.has(id)) return;
+          if (seenContent.has(ck)) return;
+          if (id) seenId.add(id);
+          seenContent.add(ck);
+          merged.push(l);
+        });
+        allLogs = merged.filter(l => l && (l.id_log || l.id));
         saveLogs();
         refreshPengabsenList();
-        // Backfill di latar belakang: sekali per sesi, tidak menahan UI
-        try {
-          if (sessionStorage.getItem('lis2627_backfilled') !== '1') {
-            sessionStorage.setItem('lis2627_backfilled', '1');
-            const cloudIds = new Set(cloud.map(l => l.id_log || l.id));
-            const missing = allLogs.filter(l => !cloudIds.has(l.id_log || l.id)).slice(0, 40);
-            if (missing.length) {
-              (async () => {
-                for (let i = 0; i < missing.length; i += 4) {
-                  const batch = missing.slice(i, i + 4);
-                  await Promise.allSettled(batch.map(r => api.save(r)));
-                }
-                console.info('[backfill] ' + missing.length + ' log dikirim ke cloud');
-              })();
-            }
-          }
-        } catch (e) { /* sessionStorage diblokir */ }
+        // Backfill DIMATIKAN: bikin duplikat di cloud (server sudah idempotent via content check)
         return true;
       } catch (err) {
         console.warn('[logs] cloud gagal:', err.message);
