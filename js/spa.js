@@ -456,8 +456,11 @@
       const names = [];
       const seen = new Set();
       const push = (n) => {
-        const v = String(n || '').trim();
+        const v = String(n || '').trim().replace(/\s+/g, ' ');
         if (!v) return;
+        // Buang nama CAPSLOCK semua (mis. "RAFI", "ALI ZHOFIR") — pakai nama lengkap proper case
+        const isAllCaps = v.length > 2 && v === v.toUpperCase() && /[A-Z]/.test(v);
+        if (isAllCaps) return;
         const k = v.toLowerCase();
         if (seen.has(k)) return;
         seen.add(k);
@@ -1477,6 +1480,7 @@
       getBills: getConsolidatedTagihan,
       renderAll: () => {
         refreshMemberBadges();
+        try { refreshPengabsenList(); } catch (e) {}
         initDatalist();
         renderMassList();
         renderDashboard();
@@ -1486,6 +1490,7 @@
         if (window.LISRekap) window.LISRekap.render();
       },
       openConfirm: openConfirmModal,
+      refreshPengabsen: refreshPengabsenList,
       cloudOn,
       api: () => (cloudOn() ? window.LISApi : null),
       adminPass: () => (document.getElementById('admin-pass')?.value || '').trim(),
