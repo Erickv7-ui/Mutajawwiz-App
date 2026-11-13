@@ -57,7 +57,9 @@
     let isAdminUnlocked = getSessionAdminState();
     let charts = {};
     let pendingLunasKey = null;
+    let pendingLunasHidden = false;
     let pendingConfirmCallback = null;
+    const selectedBulkKeys = new Set();
 
     // ===================== PIN PROTECTION FOR ADMIN SESSION =====================
     function syncAdminLockUI() {
@@ -325,8 +327,25 @@
     async function loadMasterData() {
       const api = cloudOn() ? window.LISApi : null;
       let fromCloud = false;
+
+      // 1) Baca file statis dari repo (CDN, instan) — database manual di GitHub
+      try {
+        const [sm, sl] = await Promise.allSettled([
+          fetch('data/master.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null),
+          fetch('data/lis.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null),
+        ]);
+        if (sm.status === 'fulfilled' && Array.isArray(sm.value) && sm.value.length) {
+          MASTER_ANGGOTA = sm.value.map(normalizeMember);
+          cacheMaster(MASTER_ANGGOTA);
+        }
+        if (sl.status === 'fulfilled' && Array.isArray(sl.value)) {
+          LIS_ANGGOTA = sl.value.map(normalizeMember);
+          cacheLis(LIS_ANGGOTA);
+        }
+      } catch (e) { console.warn('[static] gagal:', e.message); }
+
+      // 2) Cloud menyusul di background (hanya kalau ada perubahan / edit dari panel)
       if (api) {
-        // master & lis paralel, jangan berurutan
         const [mRes, lRes] = await Promise.allSettled([api.master(), api.lis()]);
         if (mRes.status === 'fulfilled' && mRes.value && Array.isArray(mRes.value.data) && mRes.value.data.length) {
           MASTER_ANGGOTA = mRes.value.data.map(normalizeMember);
@@ -534,6 +553,7 @@
             java: 0,
             totalDenda: 0,
             lunas: true,
+            hidden: false,
             tgl_lunas: '',
             penerima: ''
           };
@@ -554,6 +574,8 @@
           map[key].tgl_lunas = log.tgl_lunas || map[key].tgl_lunas;
           map[key].penerima = log.penerima || map[key].penerima;
         }
+        // Hidden: bayar lunas tapi TIDAK masuk hitungan total kas
+        if (log.hidden) map[key].hidden = true;
       });
 
       return Object.values(map).sort((a, b) => b.tgl.localeCompare(a.tgl));
@@ -565,8 +587,10 @@
       const todayLogs = allLogs.filter(l => l.tgl === today);
       const bills = getConsolidatedTagihan();
 
-      const lunasBills = bills.filter(b => b.lunas);
-      const tunggakanBills = bills.filter(b => !b.lunas);
+      // Hidden tidak dihitung di total kas maupun tunggakan
+      const visibleBills = bills.filter(b => !b.hidden);
+      const lunasBills = visibleBills.filter(b => b.lunas);
+      const tunggakanBills = visibleBills.filter(b => !b.lunas);
       const totalLunas = lunasBills.reduce((s, b) => s + b.totalDenda, 0);
       const totalTunggakan = tunggakanBills.reduce((s, b) => s + b.totalDenda, 0);
 
@@ -951,13 +975,18 @@
     // ===================== PEMBAYARAN & DENDA =====================
     function renderTagihan() {
       const allBills = getConsolidatedTagihan();
-      const lunasBills = allBills.filter(b => b.lunas);
-      const unpaidBills = allBills.filter(b => !b.lunas);
+      const visibleBills = allBills.filter(b => !b.hidden);
+      const hiddenBills = allBills.filter(b => b.hidden);
+      const lunasBills = visibleBills.filter(b => b.lunas);
+      const unpaidBills = visibleBills.filter(b => !b.lunas);
 
       document.getElementById('tag-total-tunggakan').textContent = formatRupiah(unpaidBills.reduce((s, b) => s + b.totalDenda, 0));
       document.getElementById('tag-belum-lunas-count').textContent = `${unpaidBills.length} Tagihan Belum Lunas`;
       document.getElementById('tag-total-lunas').textContent = formatRupiah(lunasBills.reduce((s, b) => s + b.totalDenda, 0));
       document.getElementById('tag-lunas-count').textContent = `${lunasBills.length} Tagihan Selesai`;
+      // tampilkan badge hidden count kalau ada
+      const hidBadge = document.getElementById('tag-hidden-count');
+      if (hidBadge) hidBadge.textContent = hiddenBills.length > 0 ? `${hiddenBills.length} Hidden` : '';
 
       const q = document.getElementById('tag-search').value.toLowerCase();
       const st = document.getElementById('tag-status-filter').value;
@@ -965,7 +994,10 @@
 
       const filtered = allBills.filter(b => {
         const matchQ = !q || b.nama.toLowerCase().includes(q) || b.kamar.toLowerCase().includes(q);
-        const matchSt = !st || (st === 'lunas' && b.lunas) || (st === 'belum' && !b.lunas);
+        const matchSt = !st
+          || (st === 'lunas' && b.lunas && !b.hidden)
+          || (st === 'belum' && !b.lunas)
+          || (st === 'hidden' && b.hidden);
         const matchRy = !ry || b.rayon === ry;
         return matchQ && matchSt && matchRy;
       });
@@ -985,8 +1017,12 @@
         if (b.indo > 0) parts.push(`${b.indo}x Indonesian`);
         if (b.java > 0) parts.push(`${b.java}x Javanese`);
 
+        const checked = selectedBulkKeys.has(b.key);
         return `
-          <tr class="${b.lunas ? 'row-lunas' : ''}">
+          <tr class="${b.lunas ? 'row-lunas' : ''} ${b.hidden ? 'row-hidden' : ''}">
+            <td class="text-center">
+              ${!b.lunas ? `<input type="checkbox" class="bulk-check" data-key="${escapeHtml(b.key)}" ${checked ? 'checked' : ''} onchange="toggleBulkKey('${escapeHtml(b.key)}', this.checked)" />` : ''}
+            </td>
             <td class="font-mono-code text-xs text-black whitespace-nowrap">${escapeHtml(b.tgl)}</td>
             <td>
               <div class="font-extrabold text-black">${escapeHtml(b.nama)}</div>
@@ -1000,7 +1036,10 @@
             </td>
             <td class="font-extrabold text-black whitespace-nowrap">${formatRupiah(b.totalDenda)}</td>
             <td>
-              ${b.lunas
+              ${b.hidden
+                ? `<span class="tag bg-[#9E6BFF] text-black">Hidden</span>
+                   <div class="text-[11px] font-bold text-black/75 mt-1">${escapeHtml(b.tgl_lunas)} • ${escapeHtml(b.penerima)}</div>`
+                : b.lunas
                 ? `<span class="tag bg-[#00E676] text-black">✓ Lunas</span>
                    <div class="text-[11px] font-bold text-black/75 mt-1">${escapeHtml(b.tgl_lunas)} • ${escapeHtml(b.penerima)}</div>`
                 : `<span class="tag bg-[#FF4D4D] text-white">Belum Lunas</span>`
@@ -1008,8 +1047,8 @@
             </td>
             <td class="text-right whitespace-nowrap">
               ${b.lunas
-                ? `<button onclick="requestBatalLunas('${escapeHtml(b.key)}')" class="btn py-1 px-2.5 text-[11px]">Batal Lunas</button>`
-                : `<button onclick="openLunasModal('${escapeHtml(b.key)}')" class="btn btn-green py-1 px-3 text-[11px]">Lunasi</button>`
+                ? `<button onclick="toggleHidden('${escapeHtml(b.key)}')" class="btn ${b.hidden ? 'btn-yellow' : ''} py-1 px-2 text-[10px]" title="Bayar lunas tapi tidak masuk hitung total">${b.hidden ? 'Unhide' : 'Hide'}</button> <button onclick="requestBatalLunas('${escapeHtml(b.key)}')" class="btn py-1 px-2.5 text-[11px]">Batal</button>`
+                : `<button onclick="openLunasModal('${escapeHtml(b.key)}')" class="btn btn-green py-1 px-3 text-[11px]">Lunasi</button> <button onclick="openLunasModal('${escapeHtml(b.key)}', true)" class="btn py-1 px-2 text-[10px]" title="Lunasi sebagai hidden">Hide</button>`
               }
             </td>
           </tr>
@@ -1017,10 +1056,121 @@
       }).join('');
     }
 
-    function openLunasModal(key) {
+    function toggleBulkKey(key, checked) {
+      if (checked) selectedBulkKeys.add(key); else selectedBulkKeys.delete(key);
+      updateBulkBar();
+    }
+
+    function selectAllBulk(checked) {
+      const bills = getConsolidatedTagihan();
+      const unpaid = bills.filter(b => !b.lunas && !b.hidden);
+      selectedBulkKeys.clear();
+      if (checked) unpaid.forEach(b => selectedBulkKeys.add(b.key));
+      document.querySelectorAll('.bulk-check').forEach(cb => {
+        cb.checked = selectedBulkKeys.has(cb.dataset.key);
+      });
+      updateBulkBar();
+    }
+
+    function updateBulkBar() {
+      const bar = document.getElementById('bulk-bar');
+      const count = document.getElementById('bulk-count');
+      if (!bar) return;
+      const n = selectedBulkKeys.size;
+      if (count) count.textContent = n;
+      if (n > 0) bar.classList.remove('hidden'); else bar.classList.add('hidden');
+    }
+
+    async function confirmLunasBulk() {
+      if (selectedBulkKeys.size === 0) return;
+      if (!isAdminUnlocked) {
+        showToast('Buka kunci sesi admin dulu (halaman Pengawasan & PIN).', 'red');
+        return;
+      }
+      const serverPass = (document.getElementById('admin-pass')?.value || '').trim();
+      if (cloudOn() && !serverPass) {
+        showToast('Isi Password Admin Server di Pengaturan dulu.', 'red');
+        return;
+      }
+      const penerima = document.getElementById('lunas-penerima-input')?.value?.trim() || 'Petugas LIS';
+      const today = getToday();
+      const bills = getConsolidatedTagihan();
+      const items = [];
+      const keys = Array.from(selectedBulkKeys);
+      keys.forEach(k => {
+        const b = bills.find(x => x.key === k);
+        if (!b) return;
+        const stambuks = Array.from(new Set((b.logs || []).map(l => l.stambuk).filter(Boolean)));
+        const targets = stambuks.length ? stambuks : [b.stambuk];
+        targets.forEach(stambuk => items.push({ tgl: b.tgl, stambuk, nama: b.nama, hidden: false }));
+      });
+      if (items.length === 0) return;
+
+      const btn = document.getElementById('btn-bulk-lunas');
+      if (btn) { btn.disabled = true; btn.textContent = 'MENYIMPAN...'; }
+      try {
+        if (cloudOn()) {
+          await window.LISApi.payBulk({ items, penerima, tgl_lunas: today, password: serverPass });
+        }
+        keys.forEach(k => {
+          allLogs.forEach(l => {
+            if (`${l.tgl}__${l.stambuk || l.nama}` === k) {
+              l.lunas = true; l.tgl_lunas = today; l.penerima = penerima; l.hidden = false;
+            }
+          });
+        });
+        selectedBulkKeys.clear();
+        saveLogs();
+        renderTagihan();
+        renderDashboard();
+        updateBulkBar();
+        showToast(`${items.length} tagihan berhasil dilunasi massal.`, 'green');
+      } catch (err) {
+        const msg = err.status === 401 ? 'Password Admin Server salah.' : 'Gagal lunas masal: ' + err.message;
+        showToast(msg, 'red');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'LUNAS MASAL'; }
+      }
+    }
+
+    async function toggleHidden(key) {
+      if (!isAdminUnlocked) {
+        showToast('Buka kunci sesi admin dulu.', 'red');
+        return;
+      }
+      const serverPass = (document.getElementById('admin-pass')?.value || '').trim();
+      const bills = getConsolidatedTagihan();
+      const b = bills.find(x => x.key === key);
+      if (!b) return;
+      const stambuks = Array.from(new Set((b.logs || []).map(l => l.stambuk).filter(Boolean)));
+      const targets = stambuks.length ? stambuks : [b.stambuk];
+      try {
+        for (const stambuk of targets) {
+          if (cloudOn() && serverPass) {
+            await window.LISApi.toggleHidden({ tgl: b.tgl, stambuk, nama: b.nama, password: serverPass, penerima: 'Petugas LIS' });
+          }
+        }
+        const newHidden = !b.hidden;
+        allLogs.forEach(l => {
+          if (`${l.tgl}__${l.stambuk || l.nama}` === key) {
+            l.hidden = newHidden;
+            if (newHidden) { l.lunas = true; l.tgl_lunas = l.tgl_lunas || getToday(); l.penerima = l.penerima || 'Petugas LIS'; }
+          }
+        });
+        saveLogs();
+        renderTagihan();
+        renderDashboard();
+        showToast(newHidden ? 'Pembayaran disembunyikan dari total.' : 'Pembayaran ditampilkan kembali.', 'yellow');
+      } catch (err) {
+        showToast('Gagal toggle hidden: ' + err.message, 'red');
+      }
+    }
+
+    function openLunasModal(key, hidden) {
       const bill = getConsolidatedTagihan().find(b => b.key === key);
       if (!bill) return;
       pendingLunasKey = key;
+      pendingLunasHidden = !!hidden;
       document.getElementById('lunas-modal-info').innerHTML = `
         <div>Santri: <b>${escapeHtml(bill.nama)}</b> (${escapeHtml(bill.kamar)})</div>
         <div>Tanggal Pelanggaran: <b>${escapeHtml(bill.tgl)}</b></div>
@@ -1058,6 +1208,7 @@
       modal.classList.add('hidden');
       modal.classList.remove('flex');
       pendingLunasKey = null;
+      pendingLunasHidden = false;
     }
 
     function confirmLunasAction() {

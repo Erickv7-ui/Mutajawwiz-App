@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=12">
-  <link rel="stylesheet" href="css/theme.css?v=12">
+  <link rel="stylesheet" href="css/app.css?v=13">
+  <link rel="stylesheet" href="css/theme.css?v=13">
   <script>
     /* Terapkan tema sebelum paint supaya tidak berkedip */
     (function () {
@@ -455,6 +455,7 @@
             <div class="text-xs font-extrabold uppercase text-black">Kas Lunas Terkumpul</div>
             <div id="tag-total-lunas" class="text-3xl font-display font-extrabold text-black my-2">Rp 0</div>
             <div id="tag-lunas-count" class="tag bg-white text-black">0 Tagihan Selesai</div>
+            <div id="tag-hidden-count" class="tag bg-[#D6C2FF] text-black mt-1 text-[10px]"></div>
           </div>
 
           <!-- INFO TARIF AKTIF (DIKELOLA DI PANEL ADMIN) -->
@@ -493,6 +494,7 @@
                 <option value="">Semua Status</option>
                 <option value="belum">Belum Lunas</option>
                 <option value="lunas">Sudah Lunas</option>
+                <option value="hidden">Hidden</option>
               </select>
               <select id="tag-rayon-filter" class="field text-xs">
                 <option value="">Semua Rayon</option>
@@ -506,10 +508,20 @@
               <button id="tag-tampilkan" class="btn btn-yellow text-xs">Reset Filter</button>
             </div>
 
+            <!-- BULK BAR -->
+            <div id="bulk-bar" class="box-flat px-3 py-2 bg-[#FFF0B8] flex items-center gap-3 no-print hidden">
+              <label class="flex items-center gap-2 text-xs font-bold text-black cursor-pointer select-none">
+                <input type="checkbox" onchange="selectAllBulk(this.checked)" /> Pilih Semua
+              </label>
+              <span class="text-xs font-bold text-black flex-1"><span id="bulk-count">0</span> tagihan dipilih</span>
+              <button id="btn-bulk-lunas" onclick="confirmLunasBulk()" class="btn btn-green text-xs py-1.5 px-3">LUNAS MASAL</button>
+            </div>
+
             <div class="box-flat overflow-x-auto">
               <table class="tbl">
                 <thead>
                   <tr>
+                    <th class="w-8 text-center">✓</th>
                     <th>Tanggal</th>
                     <th>Santri &amp; Kamar</th>
                     <th>Rincian Gabungan</th>
@@ -1161,11 +1173,11 @@
     </div>
   </div>
 
-  <script src="js/api.js?v=12"></script>
-  <script src="js/xlsx-writer.js?v=12"></script>
-  <script src="js/rekap.js?v=12"></script>
-  <script src="js/theme.js?v=12"></script>
-  <script src="js/db.js?v=12"></script>
-  <script src="js/spa.js?v=12"></script>
+  <script src="js/api.js?v=13"></script>
+  <script src="js/xlsx-writer.js?v=13"></script>
+  <script src="js/rekap.js?v=13"></script>
+  <script src="js/theme.js?v=13"></script>
+  <script src="js/db.js?v=13"></script>
+  <script src="js/spa.js?v=13"></script>
 </body>
 </html>

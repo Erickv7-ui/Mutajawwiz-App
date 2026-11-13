@@ -8,6 +8,7 @@ const LOG_PREFIX = 'logs/';
 const PAY_PREFIX = 'pay/';
 const DB_ANGGOTA = 'db/anggota.json';
 const DB_LIS = 'db/lis.json';
+const LOGS_DB = 'db/logs.json';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
 
 function send(res, status, obj) {
@@ -112,14 +113,39 @@ async function writePayments(map) {
   await writeJson('db/pay.json', map);
 }
 
+/**
+ * Store log cepat: satu blob db/logs.json (bukan ratusan blob per hari).
+ * Migrasi otomatis dari blob lama kalau db/logs.json belum ada.
+ */
+async function readAllLogsFast() {
+  const saved = await readJsonOrNull(LOGS_DB);
+  if (Array.isArray(saved)) return saved;
+  // migrasi sekali dari struktur lama logs/YYYY-MM-DD/*.json
+  try {
+    const blobs = await listAllLogs();
+    const legacy = await readMany(blobs);
+    if (legacy.length) {
+      try { await writeJson(LOGS_DB, legacy); } catch (e) { console.warn('migrasi logs gagal simpan:', e.message); }
+    }
+    return legacy;
+  } catch {
+    return [];
+  }
+}
+
+async function writeAllLogsFast(logs) {
+  await writeJson(LOGS_DB, logs);
+}
+
 function mergePayments(logs, payMap) {
   return logs.map((l) => {
     const date = String(l.tgl || l.timestamp || '').slice(0, 10);
     const p = payMap[`${date}__${l.stambuk || ''}`];
-    if (!p) return Object.assign({ lunas: false, tgl_lunas: '', penerima: '' }, l, { tgl: date });
+    if (!p) return Object.assign({ lunas: false, tgl_lunas: '', penerima: '', hidden: false }, l, { tgl: date });
     return Object.assign({}, l, {
       tgl: date,
       lunas: !!p.lunas,
+      hidden: !!p.hidden,
       tgl_lunas: p.tgl_lunas || '',
       penerima: p.penerima || '',
     });
@@ -207,16 +233,15 @@ module.exports = async (req, res) => {
       const from = url.searchParams.get('from') || '';
       const to = url.searchParams.get('to') || '';
       try {
-        const blobs = await listAllLogs();
-        // pathname: logs/YYYY-MM-DD/LOG-xxx.json
-        const picked = blobs.filter((b) => {
-          const m = /logs\/(\d{4}-\d{2}-\d{2})\//.exec(b.pathname);
-          if (!m) return false;
-          if (from && m[1] < from) return false;
-          if (to && m[1] > to) return false;
-          return true;
-        });
-        const data = await readMany(picked);
+        let data = await readAllLogsFast();
+        if (from || to) {
+          data = data.filter((l) => {
+            const d = String(l.tgl || l.timestamp || '').slice(0, 10);
+            if (from && d < from) return false;
+            if (to && d > to) return false;
+            return true;
+          });
+        }
         const payMap = await readPayments();
         const merged = mergePayments(data, payMap);
         merged.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
@@ -285,12 +310,10 @@ module.exports = async (req, res) => {
         ucapan: body.ucapan || 'None',
       };
       try {
-        await put(`${LOG_PREFIX}${date}/${id}.json`, JSON.stringify(rec), {
-          access: 'private',
-          token: TOKEN,
-          contentType: 'application/json',
-          addRandomSuffix: false,
-        });
+        // Simpan ke store cepat (satu blob)
+        const allLogs = await readAllLogsFast();
+        allLogs.push(rec);
+        await writeAllLogsFast(allLogs);
         return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menyimpan: ' + err.message });
@@ -318,6 +341,7 @@ module.exports = async (req, res) => {
             stambuk,
             nama: body.nama || '',
             lunas: true,
+            hidden: body.hidden === true || body.hidden === 'true',
             tgl_lunas: body.tgl_lunas || todayWIB(),
             penerima: body.penerima || 'Petugas LIS',
             updated_at: nowWIB(),
@@ -330,6 +354,75 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Lunasi massal (batch)
+    if (action === 'pay_bulk') {
+      if (!isAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah' });
+      }
+      let items = body.items;
+      if (typeof items === 'string') {
+        try { items = JSON.parse(items); } catch { items = []; }
+      }
+      if (!Array.isArray(items) || !items.length) {
+        return send(res, 400, { ok: false, error: 'items wajib array' });
+      }
+      const penerima = body.penerima || 'Petugas LIS';
+      const tglLunas = body.tgl_lunas || todayWIB();
+      try {
+        const payMap = await readPayments();
+        for (const it of items) {
+          const tgl = String(it.tgl || '').trim();
+          const stambuk = String(it.stambuk || '').trim();
+          if (!tgl || !stambuk) continue;
+          const key = `${tgl}__${stambuk}`;
+          payMap[key] = {
+            tgl,
+            stambuk,
+            nama: it.nama || '',
+            lunas: true,
+            hidden: it.hidden === true || it.hidden === 'true',
+            tgl_lunas: tglLunas,
+            penerima,
+            updated_at: nowWIB(),
+          };
+        }
+        await writePayments(payMap);
+        return send(res, 200, { ok: true, count: items.length });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal bulk pay: ' + err.message });
+      }
+    }
+
+    // Toggle hidden payment (bayar tapi tidak masuk hitung total)
+    if (action === 'toggle_hidden') {
+      if (!isAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah' });
+      }
+      const tgl = String(body.tgl || '').trim();
+      const stambuk = String(body.stambuk || '').trim();
+      if (!tgl || !stambuk) {
+        return send(res, 400, { ok: false, error: 'tgl dan stambuk wajib diisi' });
+      }
+      try {
+        const payMap = await readPayments();
+        const key = `${tgl}__${stambuk}`;
+        const existing = payMap[key] || { tgl, stambuk, nama: body.nama || '', lunas: false, hidden: false };
+        existing.hidden = !existing.hidden;
+        if (existing.hidden) {
+          // hidden = bayar tapi tidak masuk total, jadi tandai lunas juga
+          existing.lunas = true;
+          existing.tgl_lunas = existing.tgl_lunas || todayWIB();
+          existing.penerima = existing.penerima || body.penerima || 'Petugas LIS';
+        }
+        existing.updated_at = nowWIB();
+        payMap[key] = existing;
+        await writePayments(payMap);
+        return send(res, 200, { ok: true, payment: existing });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal toggle hidden: ' + err.message });
+      }
+    }
+
     // Hapus satu log absensi
     if (action === 'deleteLog') {
       if (!isAdmin(body.password)) {
@@ -338,10 +431,12 @@ module.exports = async (req, res) => {
       const id = String(body.id_log || body.id || '').trim();
       if (!id) return send(res, 400, { ok: false, error: 'id_log wajib diisi' });
       try {
-        const target = (await listAll(LOG_PREFIX)).filter((b) => b.pathname.includes(id));
-        if (!target.length) return send(res, 404, { ok: false, error: 'Log tidak ditemukan' });
-        await del(target.map((b) => b.pathname), { token: TOKEN });
-        return send(res, 200, { ok: true, deleted: target.length });
+        // hapus dari store cepat
+        const allLogs = await readAllLogsFast();
+        const removed = allLogs.filter((l) => (l.id_log || l.id) !== id);
+        if (removed.length === allLogs.length) return send(res, 404, { ok: false, error: 'Log tidak ditemukan' });
+        await writeAllLogsFast(removed);
+        return send(res, 200, { ok: true, deleted: allLogs.length - removed.length });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menghapus log: ' + err.message });
       }
