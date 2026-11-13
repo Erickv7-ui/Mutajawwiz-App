@@ -1841,26 +1841,13 @@
       });
 
       document.getElementById('btn-admin-clear').addEventListener('click', () => {
-        if (!isAdminUnlocked) {
-          const pass = document.getElementById('admin-pass').value.trim();
-          if (!pass) {
-            openPinModal();
-            return;
-          }
-          if (pass !== getAdminPin()) {
-            showToast('PIN Pusat salah!', 'red');
-            return;
-          }
-          unlockAdminSession();
-        }
         openConfirmModal(
           'Hapus Semua Data Pelanggaran?',
-          'Seluruh log absensi dan riwayat denda di browser ini akan dikosongkan permanen.',
+          'Seluruh log absensi dan riwayat denda di cloud + browser ini akan dikosongkan permanen. Database anggota & LIS tetap aman.',
           async () => {
             try {
               if (cloudOn()) {
-                // Password server BEDA dengan PIN admin lokal.
-                const srvPass = window.prompt('Masukkan Password Admin Server (default: LIS26-27) untuk menghapus data cloud:');
+                const srvPass = window.prompt('Masukkan Password Admin Server untuk menghapus data cloud:\n(default: LIS26-27)');
                 if (srvPass === null) return;
                 if (!String(srvPass).trim()) { showToast('Password Admin Server wajib diisi.', 'red'); return; }
                 await window.LISApi.clearAll(String(srvPass).trim());
@@ -1869,6 +1856,7 @@
               saveLogs();
               renderDashboard();
               renderTagihan();
+              renderLaporan();
               document.getElementById('admin-pass').value = '';
               showToast('Seluruh data berhasil dihapus.', 'red');
             } catch (err) {
