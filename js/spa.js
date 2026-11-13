@@ -1312,6 +1312,19 @@
       const apiInput = document.getElementById('api-url-input');
       if (apiInput) apiInput.value = apiUrl === 'local' ? '' : apiUrl;
 
+      // Popup Informasi Aplikasi (jalan duluan, sebelum apapun)
+      (function initPopup() {
+        const pop = document.getElementById('info-popup');
+        const close = document.getElementById('popup-close');
+        const btn = document.getElementById('info-btn');
+        const show = () => { if (pop) pop.classList.add('show'); };
+        const hide = () => { if (pop) pop.classList.remove('show'); };
+        if (close) close.addEventListener('click', hide);
+        if (btn) btn.addEventListener('click', () => { if (pop) pop.classList.toggle('show'); });
+        const seen = (() => { try { return sessionStorage.getItem('lis2627_info_seen') === '1'; } catch (e) { return false; } })();
+        if (!seen) { show(); try { sessionStorage.setItem('lis2627_info_seen', '1'); } catch (e) {} }
+      })();
+
       // 1. cache lokal dulu biar UI langsung terisi
       loadLogs();
       loadSavedTarif();
@@ -1365,23 +1378,6 @@
       });
       const deep = pageFromHash();
       if (deep) switchPage(deep);
-      // Popup Informasi Aplikasi saat pertama buka web (sekali per sesi)
-      const infoSeen = (() => { try { return sessionStorage.getItem('lis2627_info_seen') === '1'; } catch (e) { return false; } })();
-      if (!infoSeen) {
-        const pop = document.getElementById('info-popup');
-        if (pop) { pop.classList.remove('hidden'); pop.classList.add('flex'); try { sessionStorage.setItem('lis2627_info_seen', '1'); } catch (e) {} }
-      }
-      const infoClose = document.getElementById('popup-close');
-      if (infoClose) infoClose.addEventListener('click', () => {
-        const pop = document.getElementById('info-popup');
-        if (pop) { pop.classList.add('hidden'); pop.classList.remove('flex'); }
-      });
-      const infoBtn = document.getElementById('info-btn');
-      if (infoBtn) infoBtn.addEventListener('click', () => {
-        const pop = document.getElementById('info-popup');
-        if (pop) { pop.classList.toggle('hidden'); pop.classList.toggle('flex'); }
-      });
-
       // Quick actions
       document.getElementById('btn-input-absensi').addEventListener('click', () => switchPage('input'));
       document.getElementById('btn-lihat-semua-top').addEventListener('click', () => switchPage('tagihan'));
