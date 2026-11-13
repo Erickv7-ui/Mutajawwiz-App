@@ -26,7 +26,7 @@
     }
 
     html {
-      font-size: 80%; /* Skala 80% (-20% dari ukuran asli) */
+      font-size: 100%; /* Skala normal — tampilan rapi & terbaca */
     }
 
     * {
