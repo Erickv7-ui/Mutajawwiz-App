@@ -1827,7 +1827,13 @@
             showToast((res.data || []).length + ' baris cloud diunduh.', 'green');
             return;
           } catch (err) {
-            showToast(err.status === 401 ? 'Password Admin Server salah.' : 'Gagal export: ' + err.message, 'red');
+            if (err.status === 401) {
+              // PIN admin lokal bukan password server — fallback ke export lokal
+              exportLogsByFilter(allLogs, `Backup_Penuh_LIS_26-27_${getToday()}.csv`);
+              showToast('Password server salah — data lokal diekspor.', 'yellow');
+            } else {
+              showToast('Gagal export: ' + err.message, 'red');
+            }
             return;
           }
         }
@@ -1851,11 +1857,13 @@
           'Hapus Semua Data Pelanggaran?',
           'Seluruh log absensi dan riwayat denda di browser ini akan dikosongkan permanen.',
           async () => {
-            const pass = document.getElementById('admin-pass').value.trim();
             try {
               if (cloudOn()) {
-                if (!pass) { showToast('Isi Password Admin Server dulu.', 'red'); return; }
-                await window.LISApi.clearAll(pass);
+                // Password server BEDA dengan PIN admin lokal.
+                const srvPass = window.prompt('Masukkan Password Admin Server (default: LIS26-27) untuk menghapus data cloud:');
+                if (srvPass === null) return;
+                if (!String(srvPass).trim()) { showToast('Password Admin Server wajib diisi.', 'red'); return; }
+                await window.LISApi.clearAll(String(srvPass).trim());
               }
               allLogs = [];
               saveLogs();
@@ -1864,7 +1872,7 @@
               document.getElementById('admin-pass').value = '';
               showToast('Seluruh data berhasil dihapus.', 'red');
             } catch (err) {
-              showToast(err.status === 401 ? 'Password Admin Server salah.' : 'Gagal hapus: ' + err.message, 'red');
+              showToast(err.status === 401 ? 'Password Admin Server salah (default LIS26-27).' : 'Gagal hapus: ' + err.message, 'red');
             }
           }
         );
