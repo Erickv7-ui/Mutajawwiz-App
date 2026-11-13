@@ -443,6 +443,8 @@
   padding: 1rem;
   font-family: 'Inter', sans-serif;
 }
+/* Paksa hidden benar-benar nggak tampil ( Tailwind .hidden kalah spesifik dari #id ) */
+#login-gate.hidden { display: none !important; }
 #login-gate .gate-card {
   width: 100%; max-width: 24rem;
   background: #1E1E22;
