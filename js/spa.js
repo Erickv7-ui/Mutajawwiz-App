@@ -377,10 +377,8 @@
 
     /** Terapkan log dari cloud: gabung dengan cache lokal, dedup by id + konten */
     function applyCloudLogs(cloudData) {
-      const cloud = Array.isArray(cloudData) ? cloudData : [];
-      if (!cloud.length) return false;
-      // Cloud = sumber tunggal. Jangan gabung cache lokal (cache lama bisa berisi duplikat).
-      allLogs = cloud.filter(l => l && (l.id_log || l.id));
+      // Cloud = sumber tunggal. Selalu timpa, walau kosong (kosong = sudah dibersihkan).
+      allLogs = Array.isArray(cloudData) ? cloudData.filter(l => l && (l.id_log || l.id)) : [];
       try { enrichLogs(); } catch (e) {}
       saveLogs();
       try { refreshPengabsenList(); } catch (e) {}
@@ -1846,11 +1844,10 @@
           'Seluruh log absensi dan riwayat denda di cloud + browser ini akan dikosongkan permanen. Database anggota & LIS tetap aman.',
           async () => {
             try {
+              const pass = document.getElementById('admin-pass').value.trim();
+              if (!pass) { showToast('Isi kolom PIN Admin / Server Pass dulu.', 'yellow'); document.getElementById('admin-pass').focus(); return; }
               if (cloudOn()) {
-                const srvPass = window.prompt('Masukkan Password Admin Server untuk menghapus data cloud:\n(default: LIS26-27)');
-                if (srvPass === null) return;
-                if (!String(srvPass).trim()) { showToast('Password Admin Server wajib diisi.', 'red'); return; }
-                await window.LISApi.clearAll(String(srvPass).trim());
+                await window.LISApi.clearAll(pass);
               }
               allLogs = [];
               saveLogs();
@@ -1860,7 +1857,7 @@
               document.getElementById('admin-pass').value = '';
               showToast('Seluruh data berhasil dihapus.', 'red');
             } catch (err) {
-              showToast(err.status === 401 ? 'Password Admin Server salah (default LIS26-27).' : 'Gagal hapus: ' + err.message, 'red');
+              showToast(err.status === 401 ? 'Password salah. Untuk hapus cloud pakai: LIS26-27' : 'Gagal hapus: ' + err.message, 'red');
             }
           }
         );

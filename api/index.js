@@ -50,9 +50,10 @@ function getRawBody(req) {
 
 async function readBlob(pathname) {
   const r = await get(pathname, { access: 'private', token: TOKEN });
-  if (!r || !r.stream) return null;
-  // get() returns a ReadableStream (not a Response)
-  const text = await new Response(r.stream).text();
+  if (!r || !r.url) return null;
+  // Edge cache bisa menyajikan data lama setelah overwrite; kasih cache-buster
+  const url = r.url + (r.url.includes('?') ? '&' : '?') + '_cb=' + Date.now();
+  const text = await fetch(url).then(res => res.text());
   return JSON.parse(text);
 }
 
