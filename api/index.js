@@ -606,13 +606,22 @@ module.exports = async (req, res) => {
         return send(res, 401, { ok: false, error: 'Password admin salah' });
       }
       try {
-        const blobs = await listAllLogs();
-        const payBlobs = await listAll(PAY_PREFIX);
-        const all = blobs.concat(payBlobs);
-        if (all.length) {
-          await del(all.map((b) => b.pathname), { token: TOKEN });
-        }
-        return send(res, 200, { ok: true, deleted: all.length });
+        // 1) Kosongkan store baru (satu blob) — INI yang dipakai sekarang
+        let cleared = 0;
+        try { await writeJson(LOGS_DB, []); cleared++; } catch (e) { console.warn('clear logs:', e.message); }
+        try { await writeJson('db/pay.json', {}); cleared++; } catch (e) { console.warn('clear pay:', e.message); }
+        // 2) Hapus sisa blob lama (logs/YYYY-MM-DD/*, pay/*)
+        let deleted = 0;
+        try {
+          const blobs = await listAllLogs();
+          const payBlobs = await listAll(PAY_PREFIX);
+          const all = blobs.concat(payBlobs);
+          if (all.length) {
+            await del(all.map((b) => b.pathname), { token: TOKEN });
+            deleted = all.length;
+          }
+        } catch (e) { console.warn('clear legacy:', e.message); }
+        return send(res, 200, { ok: true, cleared, deleted });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal hapus: ' + err.message });
       }

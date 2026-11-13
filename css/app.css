@@ -562,3 +562,36 @@
   margin-top: .8rem;
   text-decoration: underline;
 }
+
+/* ===== MOBILE RESPONSIVE FIXES ===== */
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  main { padding: 0.75rem !important; }
+  .box, .box-flat { box-shadow: 2px 2px 0px #000 !important; }
+  header { padding: 0.5rem 0.75rem !important; }
+  header .max-w-7xl { gap: 0.5rem !important; flex-wrap: nowrap; }
+  .btn { font-size: 0.7rem !important; padding: 0.45rem 0.6rem !important; white-space: nowrap; }
+  .modal-card { max-width: 95vw !important; max-height: 92vh; overflow-y: auto; }
+  #info-modal-card { max-width: 95vw !important; }
+  table.tbl { min-width: 640px; }
+  table.tbl th, table.tbl td { padding: 0.55rem 0.6rem !important; font-size: 0.72rem !important; }
+  .box-flat { padding: 0.5rem !important; }
+  .card-band { padding: 0.5rem 0.75rem !important; }
+  .gate-card { width: 95vw !important; padding: 1.25rem !important; }
+  #login-gate { padding: 0.5rem !important; }
+  #btn-ekspor-hari-ini span { display: none; }
+  #btn-theme #theme-label { display: none; }
+  #info-btn span { display: none; }
+  canvas { max-height: 200px !important; }
+  .p-5 { padding: 0.85rem !important; }
+  .p-4 { padding: 0.75rem !important; }
+  .space-y-6 > * + * { margin-top: 0.9rem !important; }
+  .gap-6 { gap: 0.9rem !important; }
+  .gap-4 { gap: 0.65rem !important; }
+}
+
+@media (max-width: 400px) {
+  #clock { display: none !important; }
+  .btn { font-size: 0.65rem !important; padding: 0.4rem 0.5rem !important; }
+  table.tbl { min-width: 560px; }
+}
