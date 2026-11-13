@@ -237,7 +237,7 @@
         kamar: r.kamar || '',
         bahasa: r.bahasa || 'Indonesian',
         ucapan: r.ucapan || '',
-        pengabsen: r.pengabsen || 'Petugas Piket',
+        pengabsen: r.pengabsen || '',
         lunas: !!r.lunas,
         tgl_lunas: r.tgl_lunas || '',
         penerima: r.penerima || '',
@@ -877,7 +877,7 @@
         return;
       }
       const tgl = document.getElementById('inp-tanggal').value || getToday();
-      const pengabsen = document.getElementById('inp-pengabsen').value.trim() || 'Petugas LIS';
+      const pengabsen = document.getElementById('inp-pengabsen').value.trim() || '';
       const bahasa = document.querySelector('input[name="inp-bahasa"]:checked')?.value || 'Indonesian';
       const ucapan = document.getElementById('inp-ucapan').value.trim();
       const btn = document.getElementById('btn-simpan');
@@ -989,7 +989,7 @@
       }
       const tgl = document.getElementById('mass-tanggal').value || getToday();
       const bahasa = document.getElementById('mass-bahasa').value;
-      const pengabsen = document.getElementById('inp-pengabsen').value.trim() || 'Petugas Piket';
+      const pengabsen = document.getElementById('inp-pengabsen').value.trim() || '';
       const waktu = new Date().toTimeString().slice(0, 5);
       const btn = document.getElementById('btn-mass-simpan');
       const btnLabel = btn ? btn.textContent : '';
