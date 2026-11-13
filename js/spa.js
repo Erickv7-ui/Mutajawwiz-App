@@ -372,28 +372,16 @@
     /** Terapkan log dari cloud: gabung dengan cache lokal, dedup by id + konten */
     function applyCloudLogs(cloudData) {
       const cloud = Array.isArray(cloudData) ? cloudData : [];
-      const contentKey = (l) => [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
-        (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
-      const merged = [];
-      const seenId = new Set();
-      const seenContent = new Set();
-      [...cloud, ...(allLogs || [])].forEach(l => {
-        if (!l) return;
-        const id = l.id_log || l.id;
-        const ck = contentKey(l);
-        if (id && seenId.has(id)) return;
-        if (seenContent.has(ck)) return;
-        if (id) seenId.add(id);
-        seenContent.add(ck);
-        merged.push(l);
-      });
-      allLogs = merged.filter(l => l && (l.id_log || l.id));
+      if (!cloud.length) return false;
+      // Cloud = sumber tunggal. Jangan gabung cache lokal (cache lama bisa berisi duplikat).
+      allLogs = cloud.filter(l => l && (l.id_log || l.id));
       try { enrichLogs(); } catch (e) {}
       saveLogs();
       try { refreshPengabsenList(); } catch (e) {}
       try { renderDashboard(); } catch (e) {}
       try { renderTagihan(); } catch (e) {}
       try { renderLaporan(); } catch (e) {}
+      try { renderInputLogToday(); } catch (e) {}
       return true;
     }
 
