@@ -1869,4 +1869,21 @@
           }
         );
       });
+
+      // Bersihkan cache lokal (tanpa password)
+      document.getElementById('btn-clear-cache').addEventListener('click', () => {
+        openConfirmModal(
+          'Bersihkan Cache Lokal?',
+          'Semua cache lokal (log duplikat, tarif lama, sesi) akan dibuang. Halaman akan dimuat ulang.',
+          () => {
+            try {
+              ['lis2627_logs_v3','lis2627_tarif_v2','lis2627_admin_pin','lis2627_api_url','lis2627_info_seen','lis2627_authed'].forEach(k => {
+                try { localStorage.removeItem(k); } catch(e){}
+                try { sessionStorage.removeItem(k); } catch(e){}
+              });
+            } catch(e){}
+            location.reload();
+          }
+        );
+      });
     });
