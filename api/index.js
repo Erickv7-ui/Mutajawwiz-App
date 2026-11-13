@@ -15,10 +15,12 @@ function send(res, status, obj) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Content-Type', 'application/json');
-  // Anti-cache: data absensi & master harus selalu fresh (biar ga numpuk cache lama)
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+  // Anti-cache default, tapi jangan timpa kalau endpoint sudah set cache sendiri
+  if (!res.getHeader('Cache-Control')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
   res.status(status).end(JSON.stringify(obj));
 }
 
@@ -93,19 +95,23 @@ async function listAllLogs() {
 /** Semua status pembayaran: key = `${tgl}__${stambuk}` */
 async function readPayments() {
   try {
+    const saved = await readJsonOrNull('db/pay.json');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) return saved;
+  } catch {}
+  // fallback: scan lama
+  try {
     const records = await readMany(await listAll(PAY_PREFIX));
     const map = {};
-    records.forEach((p) => {
-      if (!p || !p.tgl || !p.stambuk) return;
-      map[`${p.tgl}__${p.stambuk}`] = p;
-    });
+    records.forEach((p) => { if (p && p.tgl && p.stambuk) map[`${p.tgl}__${p.stambuk}`] = p; });
     return map;
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 }
 
 /** Gabungkan log dengan status bayar (tidak ada record = belum lunas) */
+async function writePayments(map) {
+  await writeJson('db/pay.json', map);
+}
+
 function mergePayments(logs, payMap) {
   return logs.map((l) => {
     const date = String(l.tgl || l.timestamp || '').slice(0, 10);
@@ -302,17 +308,23 @@ module.exports = async (req, res) => {
         return send(res, 400, { ok: false, error: 'tgl dan stambuk wajib diisi' });
       }
       try {
-        const rec = {
-          tgl,
-          stambuk,
-          nama: body.nama || '',
-          lunas: action === 'pay',
-          tgl_lunas: action === 'pay' ? (body.tgl_lunas || todayWIB()) : '',
-          penerima: action === 'pay' ? (body.penerima || 'Petugas LIS') : '',
-          updated_at: nowWIB(),
-        };
-        await writeJson(`${PAY_PREFIX}${tgl}__${stambuk}.json`, rec);
-        return send(res, 200, { ok: true, payment: rec });
+        const payMap = await readPayments();
+        const key = `${tgl}__${stambuk}`;
+        if (action === 'unpay') {
+          delete payMap[key];
+        } else {
+          payMap[key] = {
+            tgl,
+            stambuk,
+            nama: body.nama || '',
+            lunas: true,
+            tgl_lunas: body.tgl_lunas || todayWIB(),
+            penerima: body.penerima || 'Petugas LIS',
+            updated_at: nowWIB(),
+          };
+        }
+        await writePayments(payMap);
+        return send(res, 200, { ok: true, payment: payMap[key] || null });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menyimpan status bayar: ' + err.message });
       }
