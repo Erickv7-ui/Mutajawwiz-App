@@ -180,7 +180,8 @@ async function writeAllLogsFast(logs) {
 function mergePayments(logs, payMap) {
   return logs.map((l) => {
     const date = String(l.tgl || l.timestamp || '').slice(0, 10);
-    const p = payMap[`${date}__${l.stambuk || ''}`];
+    const payKey = l.stambuk || l.nama || '';
+    const p = payMap[`${date}__${payKey}`];
     if (!p) return Object.assign({ lunas: false, tgl_lunas: '', penerima: '', hidden: false }, l, { tgl: date });
     return Object.assign({}, l, {
       tgl: date,
@@ -395,18 +396,20 @@ module.exports = async (req, res) => {
       }
       const tgl = String(body.tgl || '').trim();
       const stambuk = String(body.stambuk || '').trim();
-      if (!tgl || !stambuk) {
-        return send(res, 400, { ok: false, error: 'tgl dan stambuk wajib diisi' });
+      const nama = String(body.nama || '').trim();
+      const payKey = stambuk || nama;
+      if (!tgl || !payKey) {
+        return send(res, 400, { ok: false, error: 'tgl dan stambuk/nama wajib diisi' });
       }
       try {
         const payMap = await readPayments();
-        const key = `${tgl}__${stambuk}`;
+        const key = `${tgl}__${payKey}`;
         if (action === 'unpay') {
           delete payMap[key];
         } else {
           payMap[key] = {
             tgl,
-            stambuk,
+            stambuk: stambuk || nama,
             nama: body.nama || '',
             lunas: true,
             hidden: body.hidden === true || body.hidden === 'true',
@@ -441,11 +444,13 @@ module.exports = async (req, res) => {
         for (const it of items) {
           const tgl = String(it.tgl || '').trim();
           const stambuk = String(it.stambuk || '').trim();
-          if (!tgl || !stambuk) continue;
-          const key = `${tgl}__${stambuk}`;
+          const namaIt = String(it.nama || '').trim();
+          const pk = stambuk || namaIt;
+          if (!tgl || !pk) continue;
+          const key = `${tgl}__${pk}`;
           payMap[key] = {
             tgl,
-            stambuk,
+            stambuk: stambuk || namaIt,
             nama: it.nama || '',
             lunas: true,
             hidden: it.hidden === true || it.hidden === 'true',
@@ -468,13 +473,15 @@ module.exports = async (req, res) => {
       }
       const tgl = String(body.tgl || '').trim();
       const stambuk = String(body.stambuk || '').trim();
-      if (!tgl || !stambuk) {
-        return send(res, 400, { ok: false, error: 'tgl dan stambuk wajib diisi' });
+      const nama = String(body.nama || '').trim();
+      const payKey = stambuk || nama;
+      if (!tgl || !payKey) {
+        return send(res, 400, { ok: false, error: 'tgl dan stambuk/nama wajib diisi' });
       }
       try {
         const payMap = await readPayments();
-        const key = `${tgl}__${stambuk}`;
-        const existing = payMap[key] || { tgl, stambuk, nama: body.nama || '', lunas: false, hidden: false };
+        const key = `${tgl}__${payKey}`;
+        const existing = payMap[key] || { tgl, stambuk: payKey, nama: body.nama || '', lunas: false, hidden: false };
         existing.hidden = !existing.hidden;
         if (existing.hidden) {
           // hidden = bayar tapi tidak masuk total, jadi tandai lunas juga
