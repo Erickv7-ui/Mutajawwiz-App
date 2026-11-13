@@ -271,6 +271,29 @@
       return added;
     }
 
+    /** Isi rayon & tingkat dari kamar/kelas kalau kosong */
+    function enrichLogs() {
+      const rayonNames = ['Madinah', 'Ampel (1)', 'Ampel (2)', 'Gunung Jati', 'MTQ', 'RL'];
+      let changed = false;
+      allLogs.forEach(l => {
+        if (!l.rayon && l.kamar) {
+          const km = String(l.kamar);
+          const hit = rayonNames.find(rn => km.startsWith(rn) || km.includes(rn));
+          if (hit) { l.rayon = hit; changed = true; }
+        }
+        if (!l.tingkat && l.kelas) {
+          const m = /^(\d|[IV]+)\b/.exec(String(l.kelas));
+          if (m) { l.tingkat = m[1]; changed = true; }
+        }
+        // fallback: cari rayon dari master berdasar nama
+        if (!l.rayon && l.nama) {
+          const m = MASTER_ANGGOTA.find(a => a.nama === l.nama);
+          if (m && m.rayon) { l.rayon = m.rayon; changed = true; }
+        }
+      });
+      if (changed) saveLogs();
+    }
+
     function loadLogs() {
       try {
         const parsed = JSON.parse(safeGetStorage(STORAGE_KEY) || '[]');
@@ -279,6 +302,7 @@
         allLogs = [];
       }
       try { migrateLegacyLogs(); } catch (err) { console.warn('[migrasi] gagal:', err.message); }
+      try { enrichLogs(); } catch (e) { console.warn('[enrich] gagal:', e.message); }
     }
 
     function saveLogs() {
@@ -393,6 +417,7 @@
           merged.push(l);
         });
         allLogs = merged.filter(l => l && (l.id_log || l.id));
+        try { enrichLogs(); } catch (e) { console.warn('[enrich] gagal:', e.message); }
         saveLogs();
         refreshPengabsenList();
         // Backfill DIMATIKAN: bikin duplikat di cloud (server sudah idempotent via content check)
@@ -1339,8 +1364,13 @@
       const rayons = ['Madinah', 'Ampel (1)', 'Ampel (2)', 'Gunung Jati', 'MTQ', 'RL'];
       const tbody = document.getElementById('lap-rayon-table');
 
+      const rayonOf = (l) => {
+        if (l.rayon) return l.rayon;
+        const km = String(l.kamar || '');
+        return rayons.find(rn => km.startsWith(rn) || km.includes(rn)) || '';
+      };
       tbody.innerHTML = rayons.map(r => {
-        const subset = allLogs.filter(l => l.rayon === r);
+        const subset = allLogs.filter(l => rayonOf(l) === r);
         const indo = subset.filter(l => l.bahasa === 'Indonesian').length;
         const java = subset.filter(l => l.bahasa === 'Javanese').length;
         const unik = new Set(subset.map(l => l.nama)).size;
