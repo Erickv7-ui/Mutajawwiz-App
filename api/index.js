@@ -9,6 +9,7 @@ const PAY_PREFIX = 'pay/';
 const DB_ANGGOTA = 'db/anggota.json';
 const DB_LIS = 'db/lis.json';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
+const ADMIN_PIN = process.env.ADMIN_PIN || '2627';
 
 function send(res, status, obj) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -72,7 +73,8 @@ async function writeJson(pathname, obj) {
 }
 
 function isAdmin(pw) {
-  return String(pw || '').trim() === ADMIN_PASSWORD;
+  const v = String(pw || '').trim();
+  return v === ADMIN_PASSWORD || v === ADMIN_PIN;
 }
 
 /** Ambil SEMUA blob dengan prefix, sudah dipaginasi */

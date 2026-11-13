@@ -22,7 +22,11 @@
   }
 
   function password() {
-    return ((el('db-admin-pass') && el('db-admin-pass').value) || H().adminPass && H().adminPass() || '').trim();
+    var typed = ((el('db-admin-pass') && el('db-admin-pass').value) || '').trim();
+    if (typed) return typed;
+    if (H().adminPass) { var hp = H().adminPass(); if (hp) return String(hp).trim(); }
+    if (global.LISAdminPin) return String(global.LISAdminPin() || '').trim();
+    return '';
   }
 
   function filtered(table) {

@@ -160,6 +160,10 @@
       return (saved && saved.trim()) ? saved.trim() : '2627';
     }
 
+    // Dipakai panel Database agar edit/hapus cukup pakai PIN admin
+    window.LISAdminPin = getAdminPin;
+    window.LISAdminUnlocked = function () { return isAdminUnlocked; };
+
     function formatRupiah(n) {
       return 'Rp ' + Number(n || 0).toLocaleString('id-ID');
     }
@@ -297,9 +301,18 @@
         const res = await api.logs();
         const cloud = Array.isArray(res.data) ? res.data : [];
         const byId = {};
+        // Data lokal lama dipertahankan: cloud menimpa hanya kalau id sama
+        (allLogs || []).forEach(l => { byId[l.id_log || l.id] = l; });
         cloud.forEach(l => { byId[l.id_log || l.id] = l; });
-        allLogs = Object.values(byId);
+        allLogs = Object.values(byId).filter(l => l && (l.id_log || l.id));
         saveLogs();
+        refreshPengabsenList();
+        // Backfill: dorong log lokal yang belum ada di cloud (maks 300 per muat)
+        const cloudIds = new Set(cloud.map(l => l.id_log || l.id));
+        const missing = allLogs.filter(l => !cloudIds.has(l.id_log || l.id)).slice(0, 300);
+        for (const rec of missing) {
+          try { await api.save(rec); } catch (e) { console.warn('[backfill]', e.message); break; }
+        }
         return true;
       } catch (err) {
         console.warn('[logs] cloud gagal:', err.message);
@@ -321,6 +334,14 @@
       set('inp-member-count', total);
       set('set-total-anggota', total);
       set('set-total-lis', LIS_ANGGOTA.length);
+    }
+
+    /** Datalist petugas absen: dari nama pengabsen di log lama, bukan dari daftar LIS */
+    function refreshPengabsenList() {
+      const dl = document.getElementById('pengabsen-list');
+      if (!dl) return;
+      const names = Array.from(new Set((allLogs || []).map(l => (l.pengabsen || '').trim()).filter(Boolean)));
+      dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
     }
 
     function updateClock() {
@@ -1215,6 +1236,7 @@
 
       // 1. cache lokal dulu biar UI langsung terisi
       loadLogs();
+      refreshPengabsenList();
       loadSavedTarif();
       syncAdminLockUI();
       refreshMemberBadges();
@@ -1266,6 +1288,11 @@
       });
       const deep = pageFromHash();
       if (deep) switchPage(deep);
+
+      // Popup PIN admin saat pertama buka web (sesi belum terbuka)
+      if (!isAdminUnlocked) {
+        setTimeout(() => { if (!isAdminUnlocked) openPinModal(); }, 350);
+      }
 
       // Quick actions
       document.getElementById('btn-input-absensi').addEventListener('click', () => switchPage('input'));

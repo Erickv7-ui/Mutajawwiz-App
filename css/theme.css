@@ -21,29 +21,29 @@
 
 /* ================= TEMA GELAP: TOKEN ================= */
 [data-theme="dark"] {
-  --bg: #101114;
-  --surface: #191A1E;
-  --surface-2: #212329;
-  --ink: #E9E8E3;
-  --ink-muted: #A8A7A2;
-  --ink-invert: #121316;
-  --paper: #101114;
-  --card: #191A1E;
-  --ink-soft: #A8A7A2;
+  --bg: #1A1C21;
+  --surface: #24262C;
+  --surface-2: #2E3037;
+  --ink: #F3F2ED;
+  --ink-muted: #BAB9B3;
+  --ink-invert: #16181D;
+  --paper: #1A1C21;
+  --card: #24262C;
+  --ink-soft: #BAB9B3;
   --shadow: 3px 3px 0px rgba(0, 0, 0, 0.85);
   --shadow-hover: 4.5px 4.5px 0px rgba(0, 0, 0, 0.9);
   --border: #DCDBD4;
   --shadow-hard: 4px 4px 0px rgba(0, 0, 0, 0.9);
   --shadow-hard-sm: 2.5px 2.5px 0px rgba(0, 0, 0, 0.9);
   --shadow-hard-lg: 5.5px 5.5px 0px rgba(0, 0, 0, 0.9);
-  --amber: #453A15;
-  --green: #1C3B2A;
-  --cyan: #1A3843;
-  --pink: #42222F;
-  --purple: #302648;
-  --red: #55272C;
-  --chart-ink: #E9E8E3;
-  --chart-grid: #2C2F35;
+  --amber: #5A4A1B;
+  --green: #244D36;
+  --cyan: #214755;
+  --pink: #55303D;
+  --purple: #3E3159;
+  --red: #6B3138;
+  --chart-ink: #F3F2ED;
+  --chart-grid: #3A3D45;
   --chart-border: #0B0C0E;
   --chart-1: #6FD3F2;
   --chart-2: #6FE0A3;

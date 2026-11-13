@@ -301,7 +301,8 @@
                   </div>
                   <div>
                     <label class="lbl">Petugas Pengabsen</label>
-                    <input type="text" id="inp-pengabsen" class="field" value="Ust. Farhan (LIS 26-27)" />
+                    <input type="text" id="inp-pengabsen" class="field" list="pengabsen-list" value="Petugas Piket" />
+                    <datalist id="pengabsen-list"></datalist>
                   </div>
                 </div>
 
@@ -1085,7 +1086,7 @@
       <div id="lunas-modal-info" class="text-xs font-bold bg-[#FFF7DC] border-2 border-black p-3.5 space-y-1 text-black"></div>
       <div>
         <label class="lbl">Nama Petugas Penerima Bayar</label>
-        <input type="text" id="lunas-penerima-input" class="field" value="Ust. Farhan" />
+        <input type="text" id="lunas-penerima-input" class="field" value="Petugas Piket" />
       </div>
       <div id="lunas-pin-wrapper">
         <label class="lbl">Sandi / PIN Admin (Sekali per Sesi Web)</label>
