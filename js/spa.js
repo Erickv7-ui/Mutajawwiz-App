@@ -1289,10 +1289,22 @@
       const deep = pageFromHash();
       if (deep) switchPage(deep);
 
-      // Popup PIN admin saat pertama buka web (sesi belum terbuka)
-      if (!isAdminUnlocked) {
-        setTimeout(() => { if (!isAdminUnlocked) openPinModal(); }, 350);
+      // Popup Informasi Aplikasi saat pertama buka web (sekali per sesi)
+      const infoSeen = (() => { try { return sessionStorage.getItem('lis2627_info_seen') === '1'; } catch (e) { return false; } })();
+      if (!infoSeen) {
+        const pop = document.getElementById('info-popup');
+        if (pop) { pop.classList.remove('hidden'); pop.classList.add('flex'); try { sessionStorage.setItem('lis2627_info_seen', '1'); } catch (e) {} }
       }
+      const infoClose = document.getElementById('popup-close');
+      if (infoClose) infoClose.addEventListener('click', () => {
+        const pop = document.getElementById('info-popup');
+        if (pop) { pop.classList.add('hidden'); pop.classList.remove('flex'); }
+      });
+      const infoBtn = document.getElementById('info-btn');
+      if (infoBtn) infoBtn.addEventListener('click', () => {
+        const pop = document.getElementById('info-popup');
+        if (pop) { pop.classList.toggle('hidden'); pop.classList.toggle('flex'); }
+      });
 
       // Quick actions
       document.getElementById('btn-input-absensi').addEventListener('click', () => switchPage('input'));
