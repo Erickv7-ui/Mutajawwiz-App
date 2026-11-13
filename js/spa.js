@@ -9,7 +9,7 @@
     const STORAGE_KEY = 'lis2627_logs_v3';
     const API_KEY = 'lis2627_api_url';
     const PIN_STORAGE_KEY = 'lis2627_admin_pin';
-    const TARIF_STORAGE_KEY = 'lis2627_tarif_v1';
+    const TARIF_STORAGE_KEY = 'lis2627_tarif_v2';
     const ADMIN_SESSION_KEY = 'lis2627_admin_session_unlocked';
 
     const PAGE_TITLES = {
@@ -303,6 +303,12 @@
       }
       try { migrateLegacyLogs(); } catch (err) { console.warn('[migrasi] gagal:', err.message); }
       try { enrichLogs(); } catch (e) { console.warn('[enrich] gagal:', e.message); }
+      // Bersihkan cache duplikat lama (lebih dari 250 = hampir pasti duplikat)
+      if (allLogs.length > 250) {
+        console.warn('[cleanup] cache lokal', allLogs.length, 'baris → dibuang, cloud jadi sumber tunggal');
+        allLogs = [];
+        try { safeSetStorage(STORAGE_KEY, '[]'); } catch {}
+      }
     }
 
     function saveLogs() {
