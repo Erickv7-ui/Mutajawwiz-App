@@ -338,7 +338,7 @@ module.exports = async (req, res) => {
           lis: { count: lisRes.length, data: lisRes },
           logs: { count: merged.length, data: merged },
         };
-        res.setHeader('Cache-Control', 'public, max-age=20, stale-while-revalidate=60');
+        res.setHeader('Cache-Control', 'no-store');
         return send(res, 200, payload);
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Bootstrap gagal: ' + err.message });
