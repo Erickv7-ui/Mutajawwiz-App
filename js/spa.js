@@ -297,9 +297,18 @@
         const res = await api.logs();
         const cloud = Array.isArray(res.data) ? res.data : [];
         const byId = {};
+        // Data lokal lama dipertahankan: cloud menimpa hanya kalau id sama
+        (allLogs || []).forEach(l => { byId[l.id_log || l.id] = l; });
         cloud.forEach(l => { byId[l.id_log || l.id] = l; });
-        allLogs = Object.values(byId);
+        allLogs = Object.values(byId).filter(l => l && (l.id_log || l.id));
         saveLogs();
+        refreshPengabsenList();
+        // Backfill: dorong log lokal yang belum ada di cloud (maks 300 per muat)
+        const cloudIds = new Set(cloud.map(l => l.id_log || l.id));
+        const missing = allLogs.filter(l => !cloudIds.has(l.id_log || l.id)).slice(0, 300);
+        for (const rec of missing) {
+          try { await api.save(rec); } catch (e) { console.warn('[backfill]', e.message); break; }
+        }
         return true;
       } catch (err) {
         console.warn('[logs] cloud gagal:', err.message);
@@ -321,6 +330,14 @@
       set('inp-member-count', total);
       set('set-total-anggota', total);
       set('set-total-lis', LIS_ANGGOTA.length);
+    }
+
+    /** Datalist petugas absen: dari nama pengabsen di log lama, bukan dari daftar LIS */
+    function refreshPengabsenList() {
+      const dl = document.getElementById('pengabsen-list');
+      if (!dl) return;
+      const names = Array.from(new Set((allLogs || []).map(l => (l.pengabsen || '').trim()).filter(Boolean)));
+      dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
     }
 
     function updateClock() {
@@ -1266,6 +1283,22 @@
       });
       const deep = pageFromHash();
       if (deep) switchPage(deep);
+      // Popup Informasi Aplikasi saat pertama buka web (sekali per sesi)
+      const infoSeen = (() => { try { return sessionStorage.getItem('lis2627_info_seen') === '1'; } catch (e) { return false; } })();
+      if (!infoSeen) {
+        const pop = document.getElementById('info-popup');
+        if (pop) { pop.classList.remove('hidden'); pop.classList.add('flex'); try { sessionStorage.setItem('lis2627_info_seen', '1'); } catch (e) {} }
+      }
+      const infoClose = document.getElementById('popup-close');
+      if (infoClose) infoClose.addEventListener('click', () => {
+        const pop = document.getElementById('info-popup');
+        if (pop) { pop.classList.add('hidden'); pop.classList.remove('flex'); }
+      });
+      const infoBtn = document.getElementById('info-btn');
+      if (infoBtn) infoBtn.addEventListener('click', () => {
+        const pop = document.getElementById('info-popup');
+        if (pop) { pop.classList.toggle('hidden'); pop.classList.toggle('flex'); }
+      });
 
       // Quick actions
       document.getElementById('btn-input-absensi').addEventListener('click', () => switchPage('input'));
