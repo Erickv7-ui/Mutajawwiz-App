@@ -165,6 +165,15 @@
       return (saved && saved.trim()) ? saved.trim() : '2627';
     }
 
+    /**
+     * Rahasia untuk aksi tulis ke server. Server menerima PIN Pusat maupun
+     * Server Pass, jadi kolom Pengaturan boleh kosong: PIN yang dipakai.
+     */
+    function serverSecret() {
+      const typed = (document.getElementById('admin-pass')?.value || '').trim();
+      return typed || getAdminPin();
+    }
+
     function formatRupiah(n) {
       return 'Rp ' + Number(n || 0).toLocaleString('id-ID');
     }
@@ -511,7 +520,7 @@
         if (el) el.textContent = val;
       };
       set('member-count-badge', total);
-      set('inp-member-count', total);
+      set('inp-member-count', activeMembers().length);
       set('set-total-anggota', total);
       set('set-total-lis', LIS_ANGGOTA.length);
     }
@@ -538,11 +547,12 @@
         seen.add(k);
         names.push(v);
       };
-      (LIS_ANGGOTA || []).forEach(m => push(m.nama));
+      const lisActive = (LIS_ANGGOTA || []).filter(isActiveMember);
+      lisActive.forEach(m => push(m.nama));
       (allLogs || []).forEach(l => push(l.pengabsen));
       dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
       const info = document.getElementById('pengabsen-source');
-      if (info) info.textContent = (LIS_ANGGOTA || []).length + ' petugas LIS';
+      if (info) info.textContent = lisActive.length + ' petugas LIS';
     }
 
     function updateClock() {
@@ -855,9 +865,17 @@
     }
 
     // ===================== INPUT & PIKET =====================
+    /** Anggota Nonaktif (soft delete dari panel 06) tidak boleh muncul di input absensi */
+    function isActiveMember(a) {
+      return !!a && String(a.status || 'Aktif').toLowerCase() !== 'nonaktif';
+    }
+    function activeMembers() {
+      return MASTER_ANGGOTA.filter(isActiveMember);
+    }
+
     function initDatalist() {
       const dl = document.getElementById('inp-datalist');
-      dl.innerHTML = MASTER_ANGGOTA.map(a =>
+      dl.innerHTML = activeMembers().map(a =>
         `<option value="${escapeHtml(a.label)}">${escapeHtml(a.stambuk)} — ${escapeHtml(a.kelas)} (${escapeHtml(a.kamar)})</option>`
       ).join('');
     }
@@ -865,11 +883,12 @@
     function findAnggotaByInput(val) {
       const q = (val || '').trim().toLowerCase();
       if (!q) return null;
-      return MASTER_ANGGOTA.find(a =>
+      const list = activeMembers();
+      return list.find(a =>
         a.label.toLowerCase() === q ||
         a.nama.toLowerCase() === q ||
         a.stambuk === q
-      ) || MASTER_ANGGOTA.find(a => a.label.toLowerCase().includes(q));
+      ) || list.find(a => a.label.toLowerCase().includes(q));
     }
 
     function syncSelectedMemberPreview() {
@@ -892,6 +911,13 @@
         : 'border-2 border-black bg-white p-3.5 flex items-center gap-3 cursor-pointer transition-all';
     }
 
+    /** Sudah tercatat? orang + tanggal + bahasa sama → tolak biar denda tidak dobel */
+    function isDuplicateEntry(tgl, stambuk, bahasa) {
+      const norm = b => (b || 'Indonesian');
+      const match = l => l.tgl === tgl && l.stambuk === stambuk && norm(l.bahasa) === norm(bahasa);
+      return (allLogs || []).some(match) || (pendingSync || []).some(match);
+    }
+
     async function handleSingleSave() {
       const m = findAnggotaByInput(document.getElementById('inp-search').value);
       if (!m) {
@@ -901,6 +927,10 @@
       const tgl = document.getElementById('inp-tanggal').value || getToday();
       const pengabsen = document.getElementById('inp-pengabsen').value.trim() || '';
       const bahasa = document.querySelector('input[name="inp-bahasa"]:checked')?.value || 'Indonesian';
+      if (isDuplicateEntry(tgl, m.stambuk, bahasa)) {
+        showToast(`${m.nama} sudah tercatat (${bahasa}) tanggal ${tgl} — tidak dicatat dobel.`, 'yellow');
+        return;
+      }
       const ucapan = document.getElementById('inp-ucapan').value.trim();
       const btn = document.getElementById('btn-simpan');
       const btnLabel = btn ? btn.textContent : '';
@@ -974,7 +1004,7 @@
     function renderMassList() {
       const rayon = document.getElementById('mass-rayon').value;
       const q = (document.getElementById('mass-search-filter')?.value || '').toLowerCase();
-      const list = MASTER_ANGGOTA.filter(a => {
+      const list = activeMembers().filter(a => {
         const matchRayon = !rayon || a.rayon === rayon;
         const matchQ = !q || a.nama.toLowerCase().includes(q) || a.kamar.toLowerCase().includes(q);
         return matchRayon && matchQ;
@@ -1014,11 +1044,13 @@
       if (btn) { btn.disabled = true; }
 
       let ok = 0;
+      let skipped = 0;
       const failed = [];
       const batch = [];
       for (let i = 0; i < checked.length; i++) {
         const m = MASTER_ANGGOTA.find(a => a.id === checked[i]) || MASTER_ANGGOTA.find(a => a.stambuk === checked[i]);
         if (!m) continue;
+        if (isDuplicateEntry(tgl, m.stambuk, bahasa)) { skipped++; continue; }
         if (btn) btn.textContent = `MENYIMPAN ${i + 1}/${checked.length}...`;
         const rec = {
           id: 'L-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
@@ -1061,8 +1093,10 @@
       if (failed.length) {
         showToast(`${ok} tersimpan, ${failed.length} gagal. Cek koneksi cloud.`, 'red');
         console.warn('[mass] gagal:', failed);
+      } else if (ok === 0 && skipped > 0) {
+        showToast(`Semua ${skipped} anggota sudah tercatat (${bahasa}) tanggal ${tgl}.`, 'yellow');
       } else {
-        showToast(`${ok} anggota berhasil dicatat serentak!`, 'green');
+        showToast(`${ok} anggota berhasil dicatat serentak!${skipped ? ` ${skipped} dilewati (sudah ada).` : ''}`, 'green');
       }
     }
 
@@ -1181,11 +1215,7 @@
         showToast('Buka kunci sesi admin dulu (halaman Pengawasan & PIN).', 'red');
         return;
       }
-      const serverPass = (document.getElementById('admin-pass')?.value || '').trim();
-      if (cloudOn() && !serverPass) {
-        showToast('Isi Password Admin Server di Pengaturan dulu.', 'red');
-        return;
-      }
+      const serverPass = serverSecret();
       const penerima = document.getElementById('lunas-penerima-input')?.value?.trim() || 'Petugas LIS';
       const today = getToday();
       const bills = getConsolidatedTagihan();
@@ -1232,7 +1262,7 @@
         showToast('Buka kunci sesi admin dulu.', 'red');
         return;
       }
-      const serverPass = (document.getElementById('admin-pass')?.value || '').trim();
+      const serverPass = serverSecret();
       const bills = getConsolidatedTagihan();
       const b = bills.find(x => x.key === key);
       if (!b) return;
@@ -1339,12 +1369,7 @@
       const bill = getConsolidatedTagihan().find(b => b.key === pendingLunasKey);
       if (!bill) { closeLunasModal(); return; }
 
-      const serverPass = (document.getElementById('admin-pass')?.value || pinInput?.value || '').trim();
-      if (cloudOn() && !serverPass) {
-        showToast('Isi Password Admin Server di halaman Pengaturan dulu.', 'red');
-        return;
-      }
-
+      const serverPass = serverSecret();
       const targets = Array.from(new Set((bill.logs || []).map(l => l.stambuk).filter(Boolean)));
       const confirmBtn = document.getElementById('btn-confirm-lunas');
       if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'MENYIMPAN...'; }
@@ -1390,10 +1415,9 @@
         'Tagihan ini akan dikembalikan menjadi Belum Lunas (Tunggakan Aktif).',
         async () => {
           const bill = getConsolidatedTagihan().find(b => b.key === key);
-          const serverPass = (document.getElementById('admin-pass')?.value || '').trim();
+          const serverPass = serverSecret();
           try {
             if (cloudOn() && bill) {
-              if (!serverPass) { showToast('Isi Password Admin Server di Pengaturan dulu.', 'red'); return; }
               const targets = Array.from(new Set((bill.logs || []).map(l => l.stambuk).filter(Boolean)));
               for (const stambuk of (targets.length ? targets : [bill.stambuk])) {
                 await window.LISApi.unpay({ tgl: bill.tgl, stambuk, nama: bill.nama, password: serverPass });
@@ -1562,7 +1586,7 @@
       refreshPengabsen: refreshPengabsenList,
       cloudOn,
       api: () => (cloudOn() ? window.LISApi : null),
-      adminPass: () => (document.getElementById('admin-pass')?.value || '').trim(),
+      adminPass: () => serverSecret(),
     };
 
     window.addEventListener('DOMContentLoaded', async () => {
@@ -1851,7 +1875,7 @@
       });
 
       document.getElementById('btn-admin-export').addEventListener('click', async () => {
-        const pass = document.getElementById('admin-pass').value.trim();
+        const pass = serverSecret();
         if (cloudOn() && pass) {
           try {
             const res = await window.LISApi.exportAll(pass);
@@ -1860,9 +1884,9 @@
             return;
           } catch (err) {
             if (err.status === 401) {
-              // PIN admin lokal bukan password server — fallback ke export lokal
+              // PIN lokal sudah diganti & beda dari server — pakai Server Pass di Pengaturan
               exportLogsByFilter(allLogs, `Backup_Penuh_LIS_26-27_${getToday()}.csv`);
-              showToast('Password server salah — data lokal diekspor.', 'yellow');
+              showToast('PIN/Server Pass ditolak server — data lokal diekspor. Isi Server Pass di Pengaturan.', 'yellow');
             } else {
               showToast('Gagal export: ' + err.message, 'red');
             }
@@ -1879,7 +1903,7 @@
           async () => {
             try {
               const pass = document.getElementById('admin-pass').value.trim();
-              if (!pass) { showToast('Isi kolom PIN Admin / Server Pass dulu.', 'yellow'); document.getElementById('admin-pass').focus(); return; }
+              if (!pass) { showToast('Hapus Semua Data wajib Server Pass (LIS26-27). Isi kolom di atas.', 'yellow'); document.getElementById('admin-pass').focus(); return; }
               if (cloudOn()) {
                 await window.LISApi.clearAll(pass);
               }
@@ -1901,10 +1925,11 @@
       document.getElementById('btn-clear-cache').addEventListener('click', () => {
         openConfirmModal(
           'Bersihkan Cache Lokal?',
-          'Semua cache lokal (log duplikat, tarif lama, sesi) akan dibuang. Halaman akan dimuat ulang.',
+          'Cache lokal (log, database anggota/LIS, antrian sync, tarif, PIN, sesi) akan dibuang lalu ambil ulang dari cloud. Halaman dimuat ulang.',
           () => {
             try {
-              ['lis2627_logs_v3','lis2627_tarif_v2','lis2627_admin_pin','lis2627_api_url','lis2627_info_seen','lis2627_authed'].forEach(k => {
+              ['lis2627_logs_v3','lis2627_tarif_v2','lis2627_admin_pin','lis2627_api_url','lis2627_info_seen','lis2627_authed',
+               'lis2627_master_cache','lis2627_lis_cache','lis2627_pending_v1','lis2627_admin_session_unlocked'].forEach(k => {
                 try { localStorage.removeItem(k); } catch(e){}
                 try { sessionStorage.removeItem(k); } catch(e){}
               });
