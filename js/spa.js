@@ -1040,6 +1040,7 @@
         batch.push(rec);
         ok++;
       }
+      saveLogs();
 
       // Batch sync ke cloud: 1 request untuk semua (hemat blob ops)
       if (cloudOn() && batch.length) {
