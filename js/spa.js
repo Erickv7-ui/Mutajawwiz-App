@@ -417,10 +417,15 @@
       return true;
     }
 
-    /** Kunci konten log — harus sama dengan logContentKey() di api/index.js */
+    /**
+     * Kunci identitas log untuk penggabungan cloud vs lokal.
+     * Sengaja TIDAK memakai `pengabsen`, `kamar`, dan `ucapan`: server mengisi
+     * `pengabsen` default "Admin" dan bisa memperkaya `kamar`, sehingga entri
+     * yang sama akan terlihat berbeda dan terhitung dobel (tagihan naik).
+     * Identitas sebenarnya: satu orang, satu tanggal, satu bahasa.
+     */
     function logSig(l) {
-      return [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
-        (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
+      return [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa || 'Indonesian'].join('|');
     }
 
     function clearedAtMs() {

@@ -636,4 +636,6 @@
   #btn-close-sidebar { min-width: 40px; min-height: 40px; font-size: 0.8rem !important; }
   table.tbl th, table.tbl td { padding: 0.5rem 0.55rem !important; font-size: 0.78rem !important; }
   .tag { font-size: 0.68rem !important; padding: 0.12rem 0.4rem !important; }
+  #sidebar-pin-badge { min-height: 34px; padding: 0.35rem 0.55rem !important; font-size: 0.68rem !important; }
+  #bulk-head-all { width: 20px; height: 20px; cursor: pointer; }
 }
