@@ -27,6 +27,9 @@ async function markMigrated() {
   try { await writeJson(MIGRATED_FLAG, { v: 1, ts: Date.now() }); } catch (e) { console.warn('markMigrated:', e.message); }
 }
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
+// PIN Pusat (dipakai UI untuk buka sesi admin). Server menerima PIN ini juga
+// untuk aksi harian (lunas, ekspor, CRUD) supaya user tidak bingung dua sandi.
+const ADMIN_PIN = process.env.ADMIN_PIN || '2627';
 
 function send(res, status, obj) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -92,6 +95,11 @@ async function writeJson(pathname, obj) {
 }
 
 function isAdmin(pw) {
+  const v = String(pw || '').trim();
+  return v === ADMIN_PASSWORD || v === ADMIN_PIN;
+}
+/** Aksi destruktif (hapus semua data) wajib Server Pass panjang, bukan PIN 4 digit */
+function isStrictAdmin(pw) {
   return String(pw || '').trim() === ADMIN_PASSWORD;
 }
 
@@ -704,8 +712,8 @@ module.exports = async (req, res) => {
     }
 
     if (action === 'clearall') {
-      if (!isAdmin(body.password)) {
-        return send(res, 401, { ok: false, error: 'Password admin salah' });
+      if (!isStrictAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah (Hapus Semua Data wajib Server Pass)' });
       }
       try {
         // 1) Kosongkan store baru (satu blob) — INI yang dipakai sekarang

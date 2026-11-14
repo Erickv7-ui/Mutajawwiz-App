@@ -165,6 +165,7 @@
     var namaF = ((el('xlsx-nama') && el('xlsx-nama').value) || '').trim().toLowerCase();
     var dupOnly = el('xlsx-dup') && el('xlsx-dup').checked;
     var pass = ((el('xlsx-pass') && el('xlsx-pass').value) || '').trim();
+    if (!pass && H().adminPass) pass = String(H().adminPass() || '').trim();
     var btn = el('xlsx-btn');
 
     if (!all && (!from || !to)) { toast('Pilih rentang tanggal dulu.', 'red'); return; }
