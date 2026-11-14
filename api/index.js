@@ -66,10 +66,9 @@ function getRawBody(req) {
 
 async function readBlob(pathname) {
   const r = await get(pathname, { access: 'private', token: TOKEN });
-  if (!r || !r.url) return null;
-  // Edge cache bisa nyajikan data lama setelah overwrite; kasih cache-buster
-  const url = r.url + (r.url.includes('?') ? '&' : '?') + '_cb=' + Date.now();
-  const text = await fetch(url).then(res => res.text());
+  if (!r || !r.stream) return null;
+  // Private blob: consistent read via stream (langsung latest, tanpa CDN cache 60s)
+  const text = await new Response(r.stream).text();
   return JSON.parse(text);
 }
 
