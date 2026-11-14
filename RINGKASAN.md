@@ -366,3 +366,15 @@ bisa menulis hasil gabungan itu balik ke blob.
 - `.overflow-x-auto` diberi `-webkit-overflow-scrolling: touch` (scroll tabel halus di HP).
 - Hasil ukur di 390x844: font html 14px, `scrollWidth` = 390 (tidak ada geser horizontal),
   0 error konsol, simpan 2 entri → reload tetap 2, hapus → 0 dan tetap 0.
+
+#### v41 — antrian sinkron otomatis (PR #47)
+Dulu entri baru dikirim kalau antrian mencapai **5** atau tab ditutup (`pagehide`). Kalau
+petugas input 1-4 entri lalu menutup browser paksa, entri hanya ada di localStorage
+device itu dan belum masuk server.
+- `flushPendingThrottled()` — kirim antrian walau baru 1 entri, **maksimal 1 request per 30 detik**.
+- Pemicu: timer 30 detik (hanya saat tab terlihat), pindah menu, tab kembali terlihat,
+  event `online`, dan tetap ada flush saat tab ditutup.
+- Hasil uji browser: (a) simpan 1 lalu tab ditutup mendadak → saat dibuka lagi server naik 1;
+  (b) simpan 1 lalu tunggu 37 detik → server naik 1 tanpa disentuh;
+  (c) simpan 1 lalu pindah menu → server naik 1 dalam 4 detik. 0 error konsol.
+- Kuota: tetap 1 put per kirim (Advanced), hanya lebih cepat, bukan lebih sering.
