@@ -340,6 +340,22 @@
       pendingSync.push(rec);
       savePending();
     }
+    /**
+     * Kirim antrian tanpa menunggu 5 entri, tapi dibatasi maksimal 1 request
+     * per 30 detik. Dipakai saat pindah menu / timer / tab disembunyikan,
+     * supaya entri yang belum tersinkron tidak menggantung lama.
+     * Batas 30 detik menjaga konsumsi Blob Advanced ops tetap 1 put per kirim.
+     */
+    let _lastFlushAt = 0;
+    async function flushPendingThrottled() {
+      if (!cloudOn() || !pendingSync.length) return false;
+      if (navigator.onLine === false) return false;
+      const now = Date.now();
+      if (now - _lastFlushAt < 30000) return false;
+      _lastFlushAt = now;
+      return flushPending(true);
+    }
+
     async function flushPending(force) {
       if (!cloudOn() || !pendingSync.length) return false;
       if (!force && pendingSync.length < 5) return false;
@@ -684,6 +700,8 @@
         if (window.LISRekap) window.LISRekap.render();
       }
       if (pageId === 'database' && window.LISDb) window.LISDb.render();
+      // kesempatan sinkron saat user pindah menu (dibatasi 1x / 30 detik)
+      flushPendingThrottled();
       if (history.replaceState) history.replaceState(null, '', '#' + pageId);
     }
 
@@ -1730,7 +1748,15 @@
 
       // Flush pending ke cloud saat tab ditutup / pindah tab
       window.addEventListener('pagehide', () => { if (pendingSync.length) flushPending(true); });
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPending(true); });
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushPending(true);
+        else flushPendingThrottled();
+      });
+      // timer 30 detik: hanya saat tab terlihat, hemat kuota
+      setInterval(() => {
+        if (document.visibilityState === 'visible') flushPendingThrottled();
+      }, 30000);
+      window.addEventListener('online', () => flushPendingThrottled());
 
       window.addEventListener('lis-theme-change', () => {
         const dash = document.getElementById('page-dashboard');
