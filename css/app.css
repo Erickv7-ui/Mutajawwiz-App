@@ -568,13 +568,13 @@
    Tailwind pakai satuan rem, jadi menurunkan font-size html ikut mengecilkan
    teks, padding, gap, dan lebar komponen secara proporsional. */
 @media (max-width: 768px) {
-  html { font-size: 13px; }
+  html { font-size: 15px; }
   html, body { overflow-x: hidden; }
   main { padding: 0.7rem !important; }
   .box, .box-flat { box-shadow: 2px 2px 0px #000 !important; }
   header { padding: 0.45rem 0.65rem !important; }
   header .max-w-7xl { gap: 0.4rem !important; flex-wrap: nowrap; }
-  .btn { font-size: 0.68rem !important; padding: 0.4rem 0.55rem !important; white-space: nowrap; }
+  .btn { min-height: 40px; font-size: 0.82rem !important; padding: 0.5rem 0.7rem !important; white-space: nowrap; }
   .modal-card { max-width: 94vw !important; max-height: 92vh; overflow-y: auto; }
   #info-modal-card { max-width: 94vw !important; }
   table.tbl { min-width: 560px; }
@@ -608,14 +608,32 @@
   .w-72 { width: 16rem !important; }
   .tag { font-size: 0.6rem !important; padding: 0.1rem 0.35rem !important; }
   .lbl { font-size: 0.62rem !important; margin-bottom: 0.2rem !important; }
-  .field { font-size: 0.72rem !important; padding: 0.4rem 0.5rem !important; }
-  #topbar-breadcrumb { font-size: 0.68rem !important; }
+  .field { min-height: 40px; font-size: 0.9rem !important; padding: 0.5rem 0.6rem !important; }
+  #topbar-breadcrumb { font-size: 0.8rem !important; }
 }
 
 @media (max-width: 400px) {
-  html { font-size: 11.5px; }
+  html { font-size: 14px; }
   #clock { display: none !important; }
-  .btn { font-size: 0.62rem !important; padding: 0.35rem 0.45rem !important; }
+  .btn { font-size: 0.78rem !important; }
   table.tbl { min-width: 500px; }
-  main { padding: 0.55rem !important; }
+  main { padding: 0.6rem !important; }
+}
+
+/* ===== TARGET SENTUH & KETERBACAAN DI HP =====
+   Ditambahkan setelah blok di atas supaya menimpa aturan pengecilan lama.
+   Akar keluhan "mepet/rapat": font-size html diturunkan ke 13px/11.5px,
+   jadi ikon topbar cuma 20-27px dan tombol 21px — di bawah standar 40px. */
+@media (max-width: 768px) {
+  header .btn { min-width: 40px; min-height: 40px; padding: 0.3rem !important;
+    display: inline-flex; align-items: center; justify-content: center; }
+  .field, input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    min-height: 40px; font-size: 0.9rem !important; padding: 0.5rem 0.6rem !important; }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+  .lbl { font-size: 0.72rem !important; margin-bottom: 0.25rem !important; }
+  .nav-item { font-size: 0.85rem !important; min-height: 44px; padding: 0.55rem 0.7rem !important; }
+  .nav-item .nav-idx { font-size: 0.7rem !important; }
+  #btn-close-sidebar { min-width: 40px; min-height: 40px; font-size: 0.8rem !important; }
+  table.tbl th, table.tbl td { padding: 0.5rem 0.55rem !important; font-size: 0.78rem !important; }
+  .tag { font-size: 0.68rem !important; padding: 0.12rem 0.4rem !important; }
 }

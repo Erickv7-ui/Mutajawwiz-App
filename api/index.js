@@ -177,14 +177,52 @@ function dedupeLogs(arr) {
   return out;
 }
 
+/**
+ * Cache RAM write-through.
+ * Blob Vercel punya jeda read-after-write (terukur 18-25 detik): setelah `put`,
+ * `get` bisa masih mengembalikan versi lama. Instance yang baru menulis
+ * menyimpan salinan di RAM dan pembacaan digabung (union) dengan isi blob,
+ * jadi entri baru tidak pernah "hilang" walau blob masih stale.
+ * Nol operasi blob tambahan — murni memori proses.
+ */
+let _logsMem = { at: 0, data: [] };
+let _logsReadAt = 0;
+let _lastDedupeAt = 0;
+const LOGS_MEM_TTL = 5000;   // pakai RAM saja kalau pembacaan terakhir < 5 detik
+const LOGS_MEM_FRESH = 300000; // union dengan RAM kalau tulisan terakhir < 5 menit
+
+function unionLogs(base, extra) {
+  const seen = new Set();
+  const out = [];
+  for (const l of [...(base || []), ...(extra || [])]) {
+    if (!l) continue;
+    const k = logContentKey(l);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(l);
+  }
+  return out;
+}
+
 async function readAllLogsFast() {
+  const now = Date.now();
+  if (_logsReadAt && now - _logsReadAt < LOGS_MEM_TTL) {
+    return _logsMem.data.slice();
+  }
   const saved = await readJsonOrNull(LOGS_DB);
   if (Array.isArray(saved)) {
     const enriched = saved.map(enrichLog);
     let clean = dedupeLogs(enriched);
-    if (clean.length !== saved.length) {
+    if (clean.length !== saved.length && now - _lastDedupeAt > 3600000) {
+      _lastDedupeAt = now;
       try { await writeJson(LOGS_DB, clean); } catch (e) { console.warn('auto-dedupe simpan gagal:', e.message); }
     }
+    // gabung dengan tulisan terbaru dari instance ini (blob mungkin belum sinkron)
+    if (_logsMem.at && now - _logsMem.at < LOGS_MEM_FRESH) {
+      clean = unionLogs(clean, _logsMem.data);
+    }
+    _logsMem = { at: _logsMem.at || now, data: clean };
+    _logsReadAt = now;
     // Log lama (blob logs/YYYY-MM-DD/*) yang belum ikut migrasi tetap diselamatkan.
     clean = await mergeLegacyStep(clean);
     return clean;
@@ -251,6 +289,9 @@ async function mergeLegacyStep(base) {
 
 async function writeAllLogsFast(logs) {
   await writeJson(LOGS_DB, logs);
+  // write-through: instance ini langsung melihat datanya sendiri
+  _logsMem = { at: Date.now(), data: (logs || []).slice() };
+  _logsReadAt = Date.now();
 }
 
 function mergePayments(logs, payMap) {
