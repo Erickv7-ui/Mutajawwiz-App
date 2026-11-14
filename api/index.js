@@ -10,6 +10,7 @@ const DB_ANGGOTA = 'db/anggota.json';
 const DB_LIS = 'db/lis.json';
 const LOGS_DB = 'db/logs.json';
 const MIGRATED_FLAG = 'db/_migrated.json';
+const LEGACY_MERGE_FLAG = 'db/_legacy_merged.json';
 
 /** Flag supaya migrasi (list advanced op) cuma jalan sekali */
 let _migratedCache = null;
@@ -172,10 +173,12 @@ async function readAllLogsFast() {
   const saved = await readJsonOrNull(LOGS_DB);
   if (Array.isArray(saved)) {
     const enriched = saved.map(enrichLog);
-    const clean = dedupeLogs(enriched);
+    let clean = dedupeLogs(enriched);
     if (clean.length !== saved.length) {
       try { await writeJson(LOGS_DB, clean); } catch (e) { console.warn('auto-dedupe simpan gagal:', e.message); }
     }
+    // Log lama (blob logs/YYYY-MM-DD/*) yang belum ikut migrasi tetap diselamatkan.
+    clean = await mergeLegacyStep(clean);
     return clean;
   }
   // migrasi sekali dari struktur lama logs/YYYY-MM-DD/*.json
@@ -190,6 +193,51 @@ async function readAllLogsFast() {
     return legacy;
   } catch {
     return [];
+  }
+}
+
+/** Status merge log lama: { done, cursor } */
+let _legacyCache = null;
+async function legacyMergeDone() {
+  if (_legacyCache !== null) return _legacyCache;
+  try {
+    const v = await readJsonOrNull(LEGACY_MERGE_FLAG);
+    _legacyCache = !!(v && v.done);
+    return _legacyCache;
+  } catch { return false; }
+}
+
+/**
+ * Gabungkan sisa blob lama logs/YYYY-MM-DD/*.json ke db/logs.json.
+ * Dulu migrasi cuma jalan kalau db/logs.json BELUM ada, jadi kalau blob baru sudah
+ * dibuat duluan (batch sync v32) log lama tidak pernah ikut -> export/XLSX cuma sebagian.
+ * Sekarang jalan bertahap: 1 halaman (20 blob) per request, cursor disimpan di flag,
+ * dan cursor tidak maju kalau ada blob yang gagal dibaca (biar tidak ada data hilang).
+ */
+async function mergeLegacyStep(base) {
+  if (await legacyMergeDone()) return base;
+  try {
+    const state = (await readJsonOrNull(LEGACY_MERGE_FLAG)) || {};
+    const page = await list({ prefix: LOG_PREFIX, token: TOKEN, cursor: state.cursor || undefined, limit: 20 });
+    const blobs = page.blobs || [];
+    const got = [];
+    let failed = false;
+    for (const b of blobs) {
+      try { got.push(await readBlob(b.pathname)); } catch { failed = true; }
+    }
+    let out = base;
+    if (got.length) {
+      out = dedupeLogs(base.concat(got.map(enrichLog)));
+      await writeJson(LOGS_DB, out);
+    }
+    if (failed) return out; // ulangi halaman ini di request berikutnya
+    const done = !page.cursor;
+    await writeJson(LEGACY_MERGE_FLAG, { done, cursor: page.cursor || '', at: nowWIB() });
+    if (done) _legacyCache = true;
+    return out;
+  } catch (e) {
+    console.warn('merge legacy step:', e.message);
+    return base;
   }
 }
 
@@ -639,8 +687,13 @@ module.exports = async (req, res) => {
         return send(res, 401, { ok: false, error: 'Password admin salah' });
       }
       try {
-        const blobs = await listAllLogs();
-        const data = await readMany(blobs);
+        // Sumber utama: db/logs.json — di sinilah SEMUA log sekarang disimpan.
+        // (Bug lama: export cuma baca blob legacy logs/YYYY-MM-DD/*, jadi cuma sebagian.)
+        let data = await readAllLogsFast();
+        // Selesaikan merge log lama dulu (bertahap, maks 25 halaman per klik export)
+        for (let i = 0; i < 25 && !(await legacyMergeDone()); i++) {
+          data = await mergeLegacyStep(data);
+        }
         const payMap = await readPayments();
         const merged = mergePayments(data, payMap);
         merged.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
