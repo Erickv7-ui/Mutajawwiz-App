@@ -189,7 +189,9 @@ let _logsMem = { at: 0, data: [] };
 let _logsReadAt = 0;
 let _lastDedupeAt = 0;
 const LOGS_MEM_TTL = 5000;   // pakai RAM saja kalau pembacaan terakhir < 5 detik
-const LOGS_MEM_FRESH = 300000; // union dengan RAM kalau tulisan terakhir < 5 menit
+const LOGS_MEM_FRESH = 3000;  // union RAM HANYA 3 detik setelah tulis (write-through),
+                              // lebih lama dari itu blob yang menang supaya data yang sudah
+                              // dihapus tidak dibangkitkan lagi oleh cache RAM instance lain.
 
 function unionLogs(base, extra) {
   const seen = new Set();
@@ -221,7 +223,8 @@ async function readAllLogsFast() {
     if (_logsMem.at && now - _logsMem.at < LOGS_MEM_FRESH) {
       clean = unionLogs(clean, _logsMem.data);
     }
-    _logsMem = { at: _logsMem.at || now, data: clean };
+    // at:0 = RAM ini hasil BACA, bukan hasil TULIS → jangan dipakai untuk union
+    _logsMem = { at: 0, data: clean };
     _logsReadAt = now;
     // Log lama (blob logs/YYYY-MM-DD/*) yang belum ikut migrasi tetap diselamatkan.
     clean = await mergeLegacyStep(clean);
@@ -757,6 +760,11 @@ module.exports = async (req, res) => {
         return send(res, 401, { ok: false, error: 'Password admin salah (Hapus Semua Data wajib Server Pass)' });
       }
       try {
+        // 0) Buang cache RAM instance ini dulu — kalau tidak, cache bisa
+        //    "membangkitkan" log yang baru dihapus sampai TTL habis.
+        _logsMem = { at: 0, data: [] };
+        _logsReadAt = 0;
+        _lastDedupeAt = 0;
         // 1) Kosongkan store baru (satu blob) — INI yang dipakai sekarang
         let cleared = 0;
         try { await writeJson(LOGS_DB, []); cleared++; } catch (e) { console.warn('clear logs:', e.message); }
