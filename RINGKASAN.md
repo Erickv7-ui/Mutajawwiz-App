@@ -249,6 +249,8 @@ Prioritas rendah:
 |--------|----------|--------|
 | Data balik setelah hapus | Snapshot blob telat + cache lokal lama | Sudah ditangani v38 (tombstone `lis2627_cleared_at` + union). Kalau masih: klik "Bersihkan Cache", hard refresh Ctrl+Shift+R |
 | Entri baru hilang lalu muncul sendiri | Jeda read-after-write blob 18–25 detik | Normal; v38 menyembunyikannya (cache RAM + union). Jangan panik input ulang |
+| Tagihan naik padahal tidak bayar/hapus apa pun | Entri sama tampil dua kali: lokal `pengabsen:""` vs cloud `pengabsen:"Admin"` | v38.1 — kunci union hanya `tgl\|stambuk\|nama\|bahasa`, tidak lagi memakai pengabsen/kamar/ucapan |
+| Data balik lagi setelah "Hapus Semua Data" (muncul belakangan) | Cache RAM server (5 menit) membangkitkan log yang sudah dihapus | v38.2 — union RAM hanya 3 detik pasca-tulis, `clearall` me-reset `_logsMem`/`_logsReadAt`/`_lastDedupeAt` |
 | Tombol di HP susah dipencet | Font html dikecilkan 11.5–13px (v27) | Sudah diperbaiki v38: target sentuh minimal 40px |
 | Tagihan naik sendiri | Log duplikat lama | Admin → `dedupe_logs`, atau hapus semua data |
 | PIN selalu salah | PIN lokal diganti, beda dari server | Isi Server Pass `LIS26-27` di Pengaturan; lunasi/ekspor/CRUD normalnya cukup PIN `2627` |
@@ -339,3 +341,28 @@ Diuji langsung di browser sungguhan (Edge headless + CDP) pada layar 390x844 dan
 - **"Pilih Semua" tagihan dipindah ke header tabel** — sebelumnya ada di dalam bar yang baru muncul setelah satu baris dicentang (tidak bisa dipakai duluan). Sekarang memilih semua baris yang sedang tampil (mengikuti filter), lengkap dengan status *indeterminate*.
 - **Koreksi dokumen kuota** — `put` dihitung **Advanced**, bukan Simple (tabel lama salah). Ditambah skenario berat: Advanced (2.000) jebol lebih dulu daripada Simple (10.000).
 - Versi aset dinaikkan ke `?v=38` supaya semua perangkat mengambil CSS/JS baru.
+
+#### v38.1 — entri dobel setelah reload (PR #41, #42)
+Uji di browser: simpan 1 entri → lokal 4, cloud 4, tapi setelah reload jadi **5**.
+Penyebab: server mengisi `pengabsen` default `"Admin"`, klien menyimpan `""`. Kunci
+union lama ikut menghitung `pengabsen`, `kamar`, dan `ucapan`, jadi entri yang sama
+dianggap dua entri berbeda → total tagihan naik sendiri.
+- `logSig()` sekarang `tgl|stambuk|nama|bahasa` saja (identitas sebenarnya: satu orang,
+  satu tanggal, satu bahasa). `isDuplicateEntry` di klien tetap memakai kunci yang sama.
+- Badge PIN sidebar dinaikkan ke 34px dan checkbox diperbesar (PR #42 menaikkan aset ke `?v=39`).
+
+#### v38.2 — cache RAM membangkitkan log yang sudah dihapus (PR #43)
+Uji: "Hapus Semua Data" → toast sukses, lokal 0, tapi `GET /api?action=logs` tetap **5**
+lebih dari 30 detik. Penyebab: `clearall` menulis blob kosong tapi **tidak** mengosongkan
+cache RAM; instance lain masih menggabungkan RAM (5 menit) ke blob kosong, dan auto-dedupe
+bisa menulis hasil gabungan itu balik ke blob.
+- `LOGS_MEM_FRESH` 300.000 ms → **3.000 ms** (union RAM hanya jendela write-through).
+- Setelah baca blob, `_logsMem.at` di-set `0` (RAM hasil baca tidak boleh dipakai untuk union).
+- `clearall` me-reset `_logsMem`, `_logsReadAt`, `_lastDedupeAt` sebelum menulis.
+- Hasil uji: hapus → lokal 0, server 0, tetap 0 setelah 3 reload (60 detik).
+
+#### v40 — sisa temuan visual HP (PR #45)
+- Checkbox header/bulk/baris 20px → **22px** dengan sel tabel `min-height: 40px` (area sentuh).
+- `.overflow-x-auto` diberi `-webkit-overflow-scrolling: touch` (scroll tabel halus di HP).
+- Hasil ukur di 390x844: font html 14px, `scrollWidth` = 390 (tidak ada geser horizontal),
+  0 error konsol, simpan 2 entri → reload tetap 2, hapus → 0 dan tetap 0.
