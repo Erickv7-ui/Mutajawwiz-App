@@ -637,5 +637,12 @@
   table.tbl th, table.tbl td { padding: 0.5rem 0.55rem !important; font-size: 0.78rem !important; }
   .tag { font-size: 0.68rem !important; padding: 0.12rem 0.4rem !important; }
   #sidebar-pin-badge { min-height: 34px; padding: 0.35rem 0.55rem !important; font-size: 0.68rem !important; }
-  #bulk-head-all { width: 20px; height: 20px; cursor: pointer; }
+  /* checkbox: kotak 22px tapi area sentuh 40px (padding sel) */
+  #bulk-head-all, .bulk-check, #bulk-bar input[type=checkbox] {
+    width: 22px !important; height: 22px !important; cursor: pointer;
+  }
+  table.tbl th:first-child, table.tbl td:first-child { padding: 0.45rem 0.6rem !important; }
+  table.tbl td:first-child label, table.tbl td:first-child { min-height: 40px; }
+  #bulk-bar input[type=checkbox] { margin-right: 0.15rem; }
+  .overflow-x-auto { -webkit-overflow-scrolling: touch; }
 }
