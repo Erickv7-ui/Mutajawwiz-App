@@ -1053,7 +1053,6 @@
       }
       saveLogs();
 
-      saveLogs();
       if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
       document.querySelectorAll('.mass-chk').forEach(c => (c.checked = false));
       renderInputLogToday();
