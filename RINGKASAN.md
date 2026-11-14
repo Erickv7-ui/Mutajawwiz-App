@@ -1,6 +1,6 @@
 # Mutajawwiz LIS 26-27 — Ringkasan Fitur & Rekap Kuota Vercel
 
-Terakhir diperbarui: 14 November 2026 (deploy v35)
+Terakhir diperbarui: 14 November 2026 (deploy v37)
 
 - Produksi: https://www.experimentlynss.my.id
 - Repo: github.com/Erickv7-ui/Mutajawwiz-App (branch `main`)
@@ -121,7 +121,8 @@ Semua response JSON. `Cache-Control: no-store` kecuali master/lis (cache 60s).
 |--------|------------------|-------------|
 | Login halaman (gate) | `123456` | hash FNV di localStorage `lis2627_pass_v2` |
 | PIN Admin lokal (buka kunci panel) | `2627` | localStorage `lis2627_admin_pin` |
-| Password server (hapus data / admin API) | `LIS26-27` | env `ADMIN_PASSWORD` di Vercel |
+| Server Pass (wajib untuk Hapus Semua Data) | `LIS26-27` | env `ADMIN_PASSWORD` di Vercel |
+| PIN Admin juga diterima server untuk lunasi/ekspor/CRUD | `2627` | env `ADMIN_PIN` di Vercel |
 
 Catatan penting:
 - Gate login bersifat **client-side** — menghalangi orang awam, bukan keamanan kriptografis.
@@ -217,7 +218,7 @@ Prioritas rendah:
 |--------|----------|--------|
 | Data balik setelah hapus | Cache lokal lama | Klik "Bersihkan Cache", hard refresh Ctrl+Shift+R |
 | Tagihan naik sendiri | Log duplikat lama | Admin → `dedupe_logs`, atau hapus semua data |
-| PIN selalu salah | Salah kolom password | Hapus data pakai password server `LIS26-27` |
+| PIN selalu salah | PIN lokal diganti, beda dari server | Isi Server Pass `LIS26-27` di Pengaturan; lunasi/ekspor/CRUD normalnya cukup PIN `2627` |
 | Web lambat | Cache browser penuh / blob besar | Bersihkan cache, cek jumlah log |
 | Autofill pengabsen kosong | Daftar LIS belum termuat | Tunggu bootstrap, atau cek panel Database LIS |
 | Tombol tidak bisa diklik | Overlay gate masih tampil | Hard refresh; gate butuh login dulu |
