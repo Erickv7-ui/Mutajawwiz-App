@@ -9,6 +9,22 @@ const PAY_PREFIX = 'pay/';
 const DB_ANGGOTA = 'db/anggota.json';
 const DB_LIS = 'db/lis.json';
 const LOGS_DB = 'db/logs.json';
+const MIGRATED_FLAG = 'db/_migrated.json';
+
+/** Flag supaya migrasi (list advanced op) cuma jalan sekali */
+let _migratedCache = null;
+async function isMigrated() {
+  if (_migratedCache !== null) return _migratedCache;
+  try {
+    const v = await readJsonOrNull(MIGRATED_FLAG);
+    _migratedCache = !!v;
+    return _migratedCache;
+  } catch { return false; }
+}
+async function markMigrated() {
+  _migratedCache = true;
+  try { await writeJson(MIGRATED_FLAG, { v: 1, ts: Date.now() }); } catch (e) { console.warn('markMigrated:', e.message); }
+}
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
 
 function send(res, status, obj) {
@@ -50,10 +66,16 @@ function getRawBody(req) {
 
 async function readBlob(pathname) {
   const r = await get(pathname, { access: 'private', token: TOKEN });
-  if (!r || !r.url) return null;
-  // Edge cache bisa menyajikan data lama setelah overwrite; kasih cache-buster
-  const url = r.url + (r.url.includes('?') ? '&' : '?') + '_cb=' + Date.now();
-  const text = await fetch(url).then(res => res.text());
+  if (!r || !r.stream) return null;
+  // Baca stream langsung (1 simple op), tanpa fetch ganda
+  const reader = r.stream.getReader();
+  const chunks = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const text = new TextDecoder().decode(Buffer.concat(chunks));
   return JSON.parse(text);
 }
 
@@ -100,9 +122,11 @@ async function readPayments() {
     const saved = await readJsonOrNull('db/pay.json');
     if (saved && typeof saved === 'object' && !Array.isArray(saved)) return saved;
   } catch {}
-  // fallback: scan lama
+  // fallback: scan lama (cuma jalan sekali, abis itu mark migrated)
+  if (await isMigrated()) return {};
   try {
     const records = await readMany(await listAll(PAY_PREFIX));
+    await markMigrated();
     const map = {};
     records.forEach((p) => { if (p && p.tgl && p.stambuk) map[`${p.tgl}__${p.stambuk}`] = p; });
     return map;
@@ -162,12 +186,14 @@ async function readAllLogsFast() {
     return clean;
   }
   // migrasi sekali dari struktur lama logs/YYYY-MM-DD/*.json
+  if (await isMigrated()) return [];
   try {
     const blobs = await listAllLogs();
     const legacy = await readMany(blobs);
     if (legacy.length) {
       try { await writeJson(LOGS_DB, legacy); } catch (e) { console.warn('migrasi logs gagal simpan:', e.message); }
     }
+    await markMigrated();
     return legacy;
   } catch {
     return [];
@@ -295,28 +321,13 @@ module.exports = async (req, res) => {
 
     if (action === 'log') {
       const date = url.searchParams.get('date') || todayWIB();
-      const prefix = `${LOG_PREFIX}${date}/`;
       try {
-        let page = await list({ prefix, token: TOKEN });
-        let blobs = [...page.blobs];
-        while (page.cursor) {
-          page = await list({ prefix, token: TOKEN, cursor: page.cursor });
-          blobs.push(...page.blobs);
-        }
-        const data = [];
-        const readErrors = [];
-        for (const b of blobs) {
-          try {
-            const rec = await readBlob(b.pathname);
-            if (rec) data.push(rec);
-          } catch (e) {
-            readErrors.push({ pathname: b.pathname, err: e.message });
-          }
-        }
+        const all = await readAllLogsFast();
+        const data = all.filter(l => String(l.tgl || '').slice(0, 10) === date);
         const payMap = await readPayments();
         const merged = mergePayments(data, payMap);
         merged.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
-        return send(res, 200, { ok: true, data: merged, _debug: { count: blobs.length, readErrors } });
+        return send(res, 200, { ok: true, data: merged });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal membaca data: ' + err.message });
       }
@@ -655,17 +666,20 @@ module.exports = async (req, res) => {
         let cleared = 0;
         try { await writeJson(LOGS_DB, []); cleared++; } catch (e) { console.warn('clear logs:', e.message); }
         try { await writeJson('db/pay.json', {}); cleared++; } catch (e) { console.warn('clear pay:', e.message); }
-        // 2) Hapus sisa blob lama (logs/YYYY-MM-DD/*, pay/*)
+        // 2) Hapus sisa blob lama (logs/YYYY-MM-DD/*, pay/*) — skip kalau sudah migrated
         let deleted = 0;
-        try {
-          const blobs = await listAllLogs();
-          const payBlobs = await listAll(PAY_PREFIX);
-          const all = blobs.concat(payBlobs);
-          if (all.length) {
-            await del(all.map((b) => b.pathname), { token: TOKEN });
-            deleted = all.length;
-          }
-        } catch (e) { console.warn('clear legacy:', e.message); }
+        if (!await isMigrated()) {
+          try {
+            const blobs = await listAllLogs();
+            const payBlobs = await listAll(PAY_PREFIX);
+            const all = blobs.concat(payBlobs);
+            if (all.length) {
+              await del(all.map((b) => b.pathname), { token: TOKEN });
+              deleted = all.length;
+            }
+            await markMigrated();
+          } catch (e) { console.warn('clear legacy:', e.message); }
+        }
         return send(res, 200, { ok: true, cleared, deleted });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal hapus: ' + err.message });

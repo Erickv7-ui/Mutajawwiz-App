@@ -1040,6 +1040,7 @@
         batch.push(rec);
         ok++;
       }
+      saveLogs();
 
       // Batch sync ke cloud: 1 request untuk semua (hemat blob ops)
       if (cloudOn() && batch.length) {
@@ -1053,7 +1054,6 @@
       }
       saveLogs();
 
-      saveLogs();
       if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
       document.querySelectorAll('.mass-chk').forEach(c => (c.checked = false));
       renderInputLogToday();
