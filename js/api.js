@@ -86,6 +86,7 @@
     log: function (date) { return get('log', { date: date }); },
 
     save: function (rec) { return post('save', rec); },
+    saveBulk: function (o) { return post('save_bulk', o); },
     pay: function (o) { return post('pay', o); },
     unpay: function (o) { return post('unpay', o); },
     payBulk: function (o) { return post('pay_bulk', o); },

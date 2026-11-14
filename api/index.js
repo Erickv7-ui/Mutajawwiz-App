@@ -351,6 +351,50 @@ module.exports = async (req, res) => {
 
   // ---------- POST ----------
   if (req.method === 'POST') {
+    // Simpan banyak absensi sekaligus (batch — hemat blob ops)
+    if (action === 'save_bulk') {
+      let items = body.items;
+      if (typeof items === 'string') {
+        try { items = JSON.parse(items); } catch { items = []; }
+      }
+      if (!Array.isArray(items) || !items.length) {
+        return send(res, 400, { ok: false, error: 'items wajib array' });
+      }
+      try {
+        const allLogs = await readAllLogsFast();
+        const added = [];
+        for (const bodyItem of items) {
+          if (!bodyItem.nama) continue;
+          const ts = nowWIB();
+          const date = String(bodyItem.tgl || '').trim() || ts.split(' ')[0];
+          const id = 'LOG-' + Date.now() + '-' + randomBytes(3).toString('hex').toUpperCase();
+          const rec = {
+            id_log: id,
+            id,
+            timestamp: ts,
+            tgl: date,
+            waktu: ts.split(' ')[1] || '',
+            pengabsen: bodyItem.pengabsen || 'Admin',
+            stambuk: bodyItem.stambuk || '',
+            nama: bodyItem.nama,
+            label: bodyItem.label || bodyItem.nama,
+            kelas: bodyItem.kelas || '',
+            tingkat: bodyItem.tingkat || '',
+            rayon: bodyItem.rayon || '',
+            kamar: bodyItem.kamar || '',
+            bahasa: bodyItem.bahasa || 'Indonesian',
+            ucapan: bodyItem.ucapan || 'None',
+          };
+          const dup = allLogs.some(l => logContentKey(l) === logContentKey(rec));
+          if (!dup) { allLogs.push(rec); added.push(rec); }
+        }
+        await writeAllLogsFast(allLogs);
+        return send(res, 200, { ok: true, count: added.length, skipped: items.length - added.length });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal bulk save: ' + err.message });
+      }
+    }
+
     if (action === 'save') {
       if (!body.nama) {
         return send(res, 400, { ok: false, error: 'Nama wajib diisi' });

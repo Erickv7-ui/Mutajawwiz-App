@@ -11,6 +11,9 @@
     const PIN_STORAGE_KEY = 'lis2627_admin_pin';
     const TARIF_STORAGE_KEY = 'lis2627_tarif_v2';
     const ADMIN_SESSION_KEY = 'lis2627_admin_session_unlocked';
+    const PENDING_KEY = 'lis2627_pending_v1';
+
+    let pendingSync = [];
 
     const PAGE_TITLES = {
       dashboard: '01. Dashboard & Analitik',
@@ -313,6 +316,33 @@
 
     function saveLogs() {
       safeSetStorage(STORAGE_KEY, JSON.stringify(allLogs));
+    }
+
+    function loadPending() {
+      try { pendingSync = JSON.parse(safeGetStorage(PENDING_KEY) || '[]'); } catch { pendingSync = []; }
+    }
+    function savePending() {
+      safeSetStorage(PENDING_KEY, JSON.stringify(pendingSync));
+    }
+    function enqueuePending(rec) {
+      pendingSync.push(rec);
+      savePending();
+    }
+    async function flushPending(force) {
+      if (!cloudOn() || !pendingSync.length) return false;
+      if (!force && pendingSync.length < 5) return false;
+      const batch = pendingSync.slice(0, 50);
+      try {
+        await window.LISApi.saveBulk({ items: batch });
+        pendingSync = pendingSync.slice(batch.length);
+        savePending();
+        setConnectionBadge('cloud');
+        return true;
+      } catch (e) {
+        console.warn('[sync] gagal:', e.message);
+        setConnectionBadge('local');
+        return false;
+      }
     }
 
     // ===================== CLOUD SYNC =====================
@@ -896,13 +926,8 @@
       try {
         let saved = rec;
         if (cloudOn()) {
-          const res = await window.LISApi.save(rec);
-          saved = Object.assign({}, rec, {
-            id: res.id_log || rec.id,
-            id_log: res.id_log || rec.id,
-            tgl: res.tgl || tgl,
-            waktu: res.timestamp ? String(res.timestamp).slice(11, 16) : rec.waktu
-          });
+          // Batch: simpan lokal dulu, kirim ke cloud tiap 5 entri (hemat blob ops)
+          enqueuePending(rec);
         }
         allLogs.push(saved);
         saveLogs();
@@ -911,7 +936,8 @@
         syncSelectedMemberPreview();
         renderInputLogToday();
         renderDashboard();
-        showToast(`Tercatat: ${m.nama} (${bahasa})`, 'green');
+        const flushed = await flushPending();
+        showToast(`Tercatat: ${m.nama} (${bahasa})${flushed ? ' • tersinkron' : ''}`, 'green');
       } catch (err) {
         showToast('Gagal menyimpan: ' + err.message, 'red');
       } finally {
@@ -989,6 +1015,7 @@
 
       let ok = 0;
       const failed = [];
+      const batch = [];
       for (let i = 0; i < checked.length; i++) {
         const m = MASTER_ANGGOTA.find(a => a.id === checked[i]) || MASTER_ANGGOTA.find(a => a.stambuk === checked[i]);
         if (!m) continue;
@@ -1009,22 +1036,22 @@
           pengabsen,
           lunas: false
         };
+        allLogs.push(rec);
+        batch.push(rec);
+        ok++;
+      }
+
+      // Batch sync ke cloud: 1 request untuk semua (hemat blob ops)
+      if (cloudOn() && batch.length) {
         try {
-          let saved = rec;
-          if (cloudOn()) {
-            const res = await window.LISApi.save(rec);
-            saved = Object.assign({}, rec, {
-              id: res.id_log || rec.id,
-              id_log: res.id_log || rec.id,
-              tgl: res.tgl || tgl,
-            });
-          }
-          allLogs.push(saved);
-          ok++;
+          await window.LISApi.saveBulk({ items: batch });
         } catch (err) {
-          failed.push(m.nama + ' (' + err.message + ')');
+          // Fallback: simpan ke pending queue, sync nanti
+          batch.forEach(r => enqueuePending(r));
+          showToast('Cloud sibuk — disimpan lokal, sync otomatis.', 'yellow');
         }
       }
+      saveLogs();
 
       saveLogs();
       if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
@@ -1563,6 +1590,7 @@
 
       // 1. cache lokal dulu biar UI langsung terisi
       loadLogs();
+      loadPending();
       loadSavedTarif();
       syncAdminLockUI();
       refreshMemberBadges();
@@ -1603,6 +1631,8 @@
           refreshPengabsenList();
           setConnectionBadge('cloud');
         }
+        // Flush pending dari sesi sebelumnya
+        if (pendingSync.length) flushPending(true);
       } catch (err) {
         console.warn('[bootstrap]', err.message);
         initDatalist();
@@ -1612,6 +1642,10 @@
       renderDashboard();
       if (window.LISRekap) window.LISRekap.init();
       if (window.LISDb) window.LISDb.init();
+
+      // Flush pending ke cloud saat tab ditutup / pindah tab
+      window.addEventListener('pagehide', () => { if (pendingSync.length) flushPending(true); });
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPending(true); });
 
       window.addEventListener('lis-theme-change', () => {
         const dash = document.getElementById('page-dashboard');
