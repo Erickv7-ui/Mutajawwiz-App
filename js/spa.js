@@ -12,6 +12,9 @@
     const TARIF_STORAGE_KEY = 'lis2627_tarif_v2';
     const ADMIN_SESSION_KEY = 'lis2627_admin_session_unlocked';
     const PENDING_KEY = 'lis2627_pending_v1';
+    // Penanda kapan "Hapus Semua Data" terakhir dijalankan — cegah data lama
+    // muncul lagi saat blob masih menyajikan snapshot sebelum penghapusan.
+    const CLEARED_AT_KEY = 'lis2627_cleared_at';
 
     let pendingSync = [];
 
@@ -414,10 +417,57 @@
       return true;
     }
 
-    /** Terapkan log dari cloud: gabung dengan cache lokal, dedup by id + konten */
+    /** Kunci konten log — harus sama dengan logContentKey() di api/index.js */
+    function logSig(l) {
+      return [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
+        (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
+    }
+
+    function clearedAtMs() {
+      const v = safeGetStorage(CLEARED_AT_KEY);
+      const t = v ? Date.parse(v) : 0;
+      return Number.isFinite(t) ? t : 0;
+    }
+
+    /**
+     * Terapkan log dari cloud.
+     * Blob Vercel bisa telat ~20 detik setelah menulis (read-after-write), jadi
+     * cloud TIDAK lagi menimpa mentah-mentah:
+     *  - entri yang baru dicatat di perangkat ini (maks 30 menit) dipertahankan
+     *    kalau belum muncul di cloud;
+     *  - entri yang lebih tua tetap percaya cloud (hapus/edit dari perangkat lain jalan);
+     *  - penanda clearall (CLEARED_AT_KEY) mencegah data lama muncul lagi.
+     */
     function applyCloudLogs(cloudData) {
-      // Cloud = sumber tunggal. Selalu timpa, walau kosong (kosong = sudah dibersihkan).
-      allLogs = Array.isArray(cloudData) ? cloudData.filter(l => l && (l.id_log || l.id)) : [];
+      const cloud = (Array.isArray(cloudData) ? cloudData : []).filter(l => l && (l.id_log || l.id));
+      const clearTs = clearedAtMs();
+      const keepFresh = 30 * 60 * 1000;
+      const now = Date.now();
+
+      const localKeep = (allLogs || []).filter(l => {
+        if (!l) return false;
+        const at = Number(l._localAt) || 0;
+        if (!at) return false;
+        if (now - at > keepFresh) return false;
+        if (clearTs && at < clearTs) return false;
+        return true;
+      });
+
+      const cloudAfterClear = clearTs
+        ? cloud.filter(l => (Date.parse(l.timestamp || l.tgl || 0) || 0) >= clearTs)
+        : cloud;
+      // Kalau cloud masih menyajikan snapshot sebelum clearall, anggap kosong.
+      const base = (clearTs && cloudAfterClear.length === 0 && cloud.length > 0) ? [] : cloudAfterClear;
+
+      const seen = new Set();
+      const merged = [];
+      for (const l of [...base, ...localKeep]) {
+        const k = logSig(l);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        merged.push(l);
+      }
+      allLogs = merged;
       try { enrichLogs(); } catch (e) {}
       saveLogs();
       try { refreshPengabsenList(); } catch (e) {}
@@ -938,6 +988,7 @@
 
       const rec = {
         id: 'L-' + Date.now(),
+        _localAt: Date.now(),
         tgl,
         waktu: new Date().toTimeString().slice(0, 5),
         stambuk: m.stambuk,
@@ -1054,6 +1105,7 @@
         if (btn) btn.textContent = `MENYIMPAN ${i + 1}/${checked.length}...`;
         const rec = {
           id: 'L-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          _localAt: Date.now(),
           tgl,
           waktu,
           stambuk: m.stambuk,
@@ -1190,13 +1242,11 @@
     }
 
     function selectAllBulk(checked) {
-      const bills = getConsolidatedTagihan();
-      const unpaid = bills.filter(b => !b.lunas && !b.hidden);
+      // Pilih baris yang SEDANG TAMPIL (mengikuti filter), bukan semua tagihan.
+      const boxes = Array.from(document.querySelectorAll('.bulk-check'));
       selectedBulkKeys.clear();
-      if (checked) unpaid.forEach(b => selectedBulkKeys.add(b.key));
-      document.querySelectorAll('.bulk-check').forEach(cb => {
-        cb.checked = selectedBulkKeys.has(cb.dataset.key);
-      });
+      if (checked) boxes.forEach(cb => { if (cb.dataset.key) selectedBulkKeys.add(cb.dataset.key); });
+      boxes.forEach(cb => { cb.checked = selectedBulkKeys.has(cb.dataset.key); });
       updateBulkBar();
     }
 
@@ -1207,6 +1257,12 @@
       const n = selectedBulkKeys.size;
       if (count) count.textContent = n;
       if (n > 0) bar.classList.remove('hidden'); else bar.classList.add('hidden');
+      const headAll = document.getElementById('bulk-head-all');
+      if (headAll) {
+        const total = document.querySelectorAll('.bulk-check').length;
+        headAll.checked = total > 0 && n >= total;
+        headAll.indeterminate = n > 0 && n < total;
+      }
     }
 
     async function confirmLunasBulk() {
@@ -1908,6 +1964,7 @@
                 await window.LISApi.clearAll(pass);
               }
               allLogs = [];
+              safeSetStorage(CLEARED_AT_KEY, new Date().toISOString());
               saveLogs();
               renderDashboard();
               renderTagihan();

@@ -148,17 +148,28 @@ Catatan penting:
 | **Blob Advanced Operations** | **2.000** |
 | Blob rate limit | 20 simple ops/detik |
 
-### Pemakaian per aksi (setelah optimasi v35)
+### Klasifikasi operasi (menurut docs Vercel, per Sep 2026)
+
+- **Advanced** (jatah Hobby **2.000/bulan**): upload (`put`), copy, `list`, set TTL, buat store.
+- **Simple** (jatah Hobby **10.000/bulan**): akses blob URL yang cache MISS + baca metadata.
+- **Data transfer** (10 GB/bulan): unduhan isi blob.
+
+Artinya: **setiap penulisan = 1 Advanced op**, setiap pembacaan = Simple + data transfer.
+
+### Pemakaian per aksi (setelah optimasi v38)
 
 | Aksi | Simple ops | Advanced ops |
 |------|-----------|--------------|
 | Buka halaman (bootstrap) | 4 get (master, lis, logs, pay) | 0 |
-| Simpan 5 absensi (batch) | 1 get + 1 put | 0 |
-| Input massal 30 anggota | 1 get + 1 put | 0 |
-| Tandai lunas 1 tagihan | 1 get + 1 put | 0 |
-| Lunas masal 10 tagihan | 1 get + 1 put | 0 |
-| Hapus semua data | 2 put | 0 (skip list kalau sudah migrasi) |
-| Migrasi awal (sekali seumur app) | beberapa get | 1–2 list |
+| Simpan 1–4 absensi | 0 (masih di antrian lokal) | 0 |
+| Simpan 5 absensi (batch) | 1 get | **1 put** |
+| Input massal 30 anggota | 1 get | **1 put** |
+| Tandai lunas 1 tagihan | 1 get | **1 put** |
+| Lunas masal 10 tagihan | 1 get | **1 put** |
+| Unduh/ekspor semua data | 1 get | 0 |
+| Hapus semua data | 1 get | **1 put** |
+| Migrasi awal (sekali seumur app) | beberapa get | 1–2 `list` |
+| Baca ulang < 5 detik (cache RAM v38) | 0 | 0 |
 
 ### Estimasi harian (1–3 petugas, pemakaian wajar)
 
@@ -174,19 +185,39 @@ Skenario: 100 absensi/hari + 20 buka halaman + 10 pembayaran.
 
 Skenario berat (300 absensi/hari + 50 buka halaman):
 
-| Komponen | Simple ops/bulan |
-|----------|------------------|
-| Bootstrap | 6.000 |
-| Simpan (batch 5) | 3.600 |
-| Pembayaran | 1.800 |
-| **Total** | **≈ 11.400 → LEWAT** |
+| Komponen | Simple ops/bulan | Advanced ops/bulan |
+|----------|------------------|--------------------|
+| Bootstrap | 6.000 | 0 |
+| Simpan (batch 5) | 3.600 | 1.800 |
+| Pembayaran | 1.800 | 600 |
+| **Total** | **≈ 11.400 → LEWAT** | **≈ 2.400 → LEWAT** |
 
-### Status sekarang (14 Nov 2026)
+**Kesimpulan penting:** di skenario berat yang jebol lebih dulu adalah **Advanced
+ops (2.000)**, bukan Simple. Penyelamatnya: perbesar batch simpan dari 5 → 10
+entri (Advanced turun 50%) dan hindari klik "Lunasi" satu per satu untuk banyak
+tagihan (pakai Lunas Masal: 10 tagihan = tetap 1 put).
+
+### Status sekarang (15 Nov 2026, deploy v38)
 
 - Log absensi: 0 (baru dibersihkan)
 - Anggota: 724 · LIS: 28
 - Ukuran blob: `db/logs.json` ≈ 0 KB, master 168 KB, lis 6 KB
 - Estimasi pemakaian: < 5% dari limit Hobby
+
+### Jeda blob ~20 detik (read-after-write) dan cara mengakalinya
+
+Vercel Blob tidak instan konsisten: setelah `put`, `get` dari edge lain masih bisa
+mengembalikan versi lama. Diukur di live: entri baru sempat terbaca 0, muncul
+lengkap setelah **18–25 detik**. Dulu ini terasa seperti "data hilang" lalu
+"balik lagi" karena `applyCloudLogs()` menimpa cache lokal mentah-mentah.
+
+Akalan v38 — **nol operasi blob tambahan**:
+
+| Lapis | Tempat | Fungsi |
+|-------|--------|--------|
+| Cache RAM write-through | `api/index.js` (`_logsMem`) | Instance yang baru menulis langsung membaca datanya sendiri; baca blob di-cache 5 detik; hasil baca digabung (union) dengan tulisan terakhir < 5 menit |
+| Union di klien | `js/spa.js` (`applyCloudLogs`) | Entri yang dicatat di perangkat ini (maks 30 menit) tidak dihapus oleh snapshot cloud yang telat |
+| Tombstone hapus | `js/spa.js` (`lis2627_cleared_at`) | Setelah "Hapus Semua Data", snapshot cloud yang lebih tua dari waktu hapus diabaikan → data lama tidak bisa muncul lagi |
 
 ### Kalau kuota habis
 Vercel **memblokir** akses Blob selama 30 hari (bukan menagih). Aplikasi tetap bisa dibuka tapi data tidak bisa disimpan/dibaca dari cloud.
@@ -216,7 +247,9 @@ Prioritas rendah:
 
 | Gejala | Penyebab | Solusi |
 |--------|----------|--------|
-| Data balik setelah hapus | Cache lokal lama | Klik "Bersihkan Cache", hard refresh Ctrl+Shift+R |
+| Data balik setelah hapus | Snapshot blob telat + cache lokal lama | Sudah ditangani v38 (tombstone `lis2627_cleared_at` + union). Kalau masih: klik "Bersihkan Cache", hard refresh Ctrl+Shift+R |
+| Entri baru hilang lalu muncul sendiri | Jeda read-after-write blob 18–25 detik | Normal; v38 menyembunyikannya (cache RAM + union). Jangan panik input ulang |
+| Tombol di HP susah dipencet | Font html dikecilkan 11.5–13px (v27) | Sudah diperbaiki v38: target sentuh minimal 40px |
 | Tagihan naik sendiri | Log duplikat lama | Admin → `dedupe_logs`, atau hapus semua data |
 | PIN selalu salah | PIN lokal diganti, beda dari server | Isi Server Pass `LIS26-27` di Pengaturan; lunasi/ekspor/CRUD normalnya cukup PIN `2627` |
 | Web lambat | Cache browser penuh / blob besar | Bersihkan cache, cek jumlah log |
@@ -229,9 +262,9 @@ Prioritas rendah:
 
 ```
 index.html              # shell SPA + modal + gate login
-css/app.css             # layout utama + responsive
+RINGKASAN.md            # dokumen ini
+css/app.css             # layout utama + responsive (mobile diatur di sini)
 css/theme.css           # dark/light
-css/style.css           # komponen neo-brutalisme
 js/spa.js               # logika utama (state, render, sync, batch)
 js/api.js               # wrapper fetch ke /api
 js/auth.js              # gate login + ganti password
@@ -244,3 +277,65 @@ data/master.json        # 724 anggota (statis, CDN)
 data/lis.json           # 28 petugas LIS (statis, CDN)
 vercel.json             # config routing + function
 ```
+
+---
+
+## 9. Riwayat Revisi dari Awal
+
+Urut dari yang paling lama. Nomor `#n` = Pull Request di GitHub.
+
+### 11 Nov 2026 — cetak biru
+- **Initial commit** — repo kosong, struktur dasar aplikasi absensi.
+
+### 12 Nov 2026 — versi satu file
+- **Initial commit absensi-web** — semua HTML/CSS/JS dalam satu halaman, data di localStorage.
+- **Merge initial commit** + **Teks ucapan default `None`** — kolom ucapan tidak lagi kosong, Enter di kolom ucapan langsung submit.
+
+### 13 Nov 2026 — pecah multi-file + fitur inti
+- **#1 upgrade multi-file** — `index.html` + `css/` + `js/` dipisah; dashboard grafik, modul pembayaran (denda), panel Database CRUD, tema terang/gelap neo-brutalisme.
+- **#2 `?theme=light|dark`** — pratinjau tema lewat URL untuk link yang dibagikan.
+- **#7 popup informasi awal** — popup sambutan (bukan popup PIN), merge + backfill data lama, nama petugas absen netral, ukuran font 100%.
+- **#8 popup info terang di dark** — kontras diperbaiki.
+- **#9 pengabsen dari LIS + migrasi log lama** — daftar petugas piket diambil dari database LIS, log format lama dimigrasi otomatis.
+- **#10 popup tidak bergantung Tailwind** — CSS mandiri + cache-bust, popup tetap rapi walau CDN Tailwind gagal.
+- **#11–#12 hemat & paralel** — master + LIS diambil paralel, backfill non-blocking, cache master/LIS di localStorage, pembayaran jadi 1 blob.
+- **#13 satu blob log + LIS masal** — semua log absensi pindah ke `db/logs.json` (bukan 1 file per hari), data statis dari repo, lunas masal, status *hidden payment*.
+- **#14 duplikat log bikin saldo dobel** — dedupe berbasis konten (`tgl|stambuk|nama|bahasa|ucapan|kamar|pengabsen`).
+- **#15 statistik per rayon kosong** — agregasi rayon diperbaiki.
+- **#16 autofill petugas penerima bayar** di modal lunas.
+- **#17 autofill hapus capslock + sinkron DB**.
+- **#18 login gate + ganti password** — halaman dikunci password `123456` (bisa diganti di Pengaturan).
+- **#19 tombol login gate tidak bisa diklik** — overlay/`z-index` diperbaiki.
+- **#20 bootstrap 1 request** — master + LIS + log + pembayaran digabung satu panggilan, render dari data statis dulu.
+- **#21 tagihan naik gara-gara `pay` key mismatch + default pengabsen kosong** — kolom pengabsen tidak lagi terisi otomatis.
+- **#22 `no-store` + perbaikan key pembayaran** — tagihan tidak lagi naik setelah reload.
+- **#23 cloud jadi sumber tunggal** — cache lokal >250 baris dibuang (indikasi duplikat).
+- **#24 cache lokal >250 baris + tarif key v2 (2000)** — tarif denda dipisah per versi supaya tidak konflik dengan nilai lama.
+- **#25 clearall bersihkan store baru + mobile responsive** — hapus semua data juga membersihkan blob pembayaran.
+- **#26 tombol "Bersihkan Cache Peramban"** + perbaikan responsif.
+- **#27 mobile scale down** — font html dikecilkan (13px / 11.5px). **Belakangan ini justru jadi sumber keluhan "mepet/rapat"** dan dibalik di v38.
+- **#28–#30 alur hapus data** — prompt password server dipisah dari PIN, validasi PIN diperbaiki, tombol hapus tidak lagi tanpa gate.
+- **#31 batch sync absensi (`save_bulk`)** — 5 entri = 1 request (hemat Advanced ops).
+- **#32–#33 hemat `list` + `readBlob` cache-bust** — `list` hanya saat migrasi, pembacaan blob tidak kena cache CDN.
+- **#34 baca blob privat pakai stream** — konsisten, tidak lagi bergantung `fetch` biasa.
+- **#35 dokumen ringkasan fitur + rekap kuota Vercel** (`RINGKASAN.md` versi pertama).
+- **#36 ekspor XLSX/CSV semua tanggal** — dulu hanya sebagian baris yang ikut terekspor.
+
+### 14 Nov 2026 — audit menyeluruh
+- **#37 enam temuan audit**:
+  1. Anggota berstatus `Nonaktif` tidak lagi muncul di input, daftar massal, dan daftar pengabsen (badge 724 → 723 aktif).
+  2. Server menerima **PIN `2627` atau Server Pass `LIS26-27`** untuk aksi harian; **Hapus Semua Data tetap wajib Server Pass**. Keluhan "PIN selalu salah" hilang.
+  3. Guard duplikat di klien (`isDuplicateEntry`) — entri kembar ditolak dengan toast, bukan diam-diam dobel.
+  4. "Bersihkan Cache" membersihkan semua kunci (log, master, LIS, antrian sync, tarif, PIN, sesi, tema) + `sessionStorage`.
+  5. Empat file mati dihapus (`js/app.js`, `js/script.js`, `js/master-data.js`, `css/style.css` — 229 KB, tidak pernah dimuat).
+  6. Label kolom password diperjelas ("PIN Admin / Server Pass").
+- **PR #38** — dokumentasi password diperbarui (PIN vs Server Pass).
+
+### 15 Nov 2026 — v38 (diuji pakai browser engine)
+Diuji langsung di browser sungguhan (Edge headless + CDP) pada layar 390x844 dan desktop.
+
+- **Jeda blob 18-25 detik diakali** — cache RAM write-through di server + union di klien + tombstone hapus. Nol operasi blob tambahan.
+- **Layout HP diperbaiki dari akar** — font html dikembalikan ke 15px (bukan 11.5px), target sentuh tombol/input/ikon minimal 40px, font sidebar 0.85rem, tombol tutup sidebar 40px.
+- **"Pilih Semua" tagihan dipindah ke header tabel** — sebelumnya ada di dalam bar yang baru muncul setelah satu baris dicentang (tidak bisa dipakai duluan). Sekarang memilih semua baris yang sedang tampil (mengikuti filter), lengkap dengan status *indeterminate*.
+- **Koreksi dokumen kuota** — `put` dihitung **Advanced**, bukan Simple (tabel lama salah). Ditambah skenario berat: Advanced (2.000) jebol lebih dulu daripada Simple (10.000).
+- Versi aset dinaikkan ke `?v=38` supaya semua perangkat mengambil CSS/JS baru.
