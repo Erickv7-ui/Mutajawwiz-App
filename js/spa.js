@@ -1246,7 +1246,7 @@
         return `
           <tr class="${b.lunas ? 'row-lunas' : ''} ${b.hidden ? 'row-hidden' : ''}">
             <td class="text-center">
-              ${!b.lunas ? `<input type="checkbox" class="bulk-check" data-key="${escapeHtml(b.key)}" ${checked ? 'checked' : ''} onchange="toggleBulkKey('${escapeHtml(b.key)}', this.checked)" />` : ''}
+              ${(!b.lunas || b.hidden) ? `<input type="checkbox" class="bulk-check" data-key="${escapeHtml(b.key)}" ${checked ? 'checked' : ''} onchange="toggleBulkKey('${escapeHtml(b.key)}', this.checked)" />` : ''}
             </td>
             <td class="font-mono-code text-xs text-black whitespace-nowrap">${escapeHtml(b.tgl)}</td>
             <td>
