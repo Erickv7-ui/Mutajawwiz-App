@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=42">
-  <link rel="stylesheet" href="css/theme.css?v=42">
+  <link rel="stylesheet" href="css/app.css?v=43">
+  <link rel="stylesheet" href="css/theme.css?v=43">
   <script>
     /* Terapkan tema sebelum paint supaya tidak berkedip */
     (function () {
@@ -520,13 +520,16 @@
             <span class="tag bg-white text-black">Auto-Merge Harian</span>
           </div>
           <div class="p-5 space-y-4">
-            <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+            <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
               <input type="text" id="tag-search" class="field lg:col-span-2 text-xs" placeholder="Cari nama atau kamar santri..." />
               <select id="tag-status-filter" class="field text-xs">
                 <option value="">Semua Status</option>
                 <option value="belum">Belum Lunas</option>
                 <option value="lunas">Sudah Lunas</option>
                 <option value="hidden">Hidden</option>
+              </select>
+              <select id="tag-tgl-filter" class="field text-xs" title="Filter per tanggal pelanggaran">
+                <option value="">Semua Tanggal</option>
               </select>
               <select id="tag-rayon-filter" class="field text-xs">
                 <option value="">Semua Rayon</option>
@@ -547,6 +550,8 @@
               </label>
               <span class="text-xs font-bold text-black flex-1"><span id="bulk-count">0</span> tagihan dipilih</span>
               <button id="btn-bulk-lunas" onclick="confirmLunasBulk()" class="btn btn-green text-xs py-1.5 px-3">LUNAS MASAL</button>
+              <button id="btn-bulk-hide" onclick="hideBulkSelected(true)" class="btn btn-yellow text-xs py-1.5 px-3" title="Sembunyikan dari total kas (bayar tapi tidak dihitung)">HIDE</button>
+              <button id="btn-bulk-unhide" onclick="hideBulkSelected(false)" class="btn text-xs py-1.5 px-3" title="Tampilkan lagi ke total kas">UNHIDE</button>
             </div>
 
             <div class="box-flat overflow-x-auto">
@@ -1215,12 +1220,12 @@
     </div>
   </div>
 
-  <script src="js/api.js?v=42"></script>
-  <script src="js/xlsx-writer.js?v=42"></script>
-  <script src="js/rekap.js?v=42"></script>
-  <script src="js/theme.js?v=42"></script>
-  <script src="js/db.js?v=42"></script>
-  <script src="js/auth.js?v=42"></script>
-  <script src="js/spa.js?v=42"></script>
+  <script src="js/api.js?v=43"></script>
+  <script src="js/xlsx-writer.js?v=43"></script>
+  <script src="js/rekap.js?v=43"></script>
+  <script src="js/theme.js?v=43"></script>
+  <script src="js/db.js?v=43"></script>
+  <script src="js/auth.js?v=43"></script>
+  <script src="js/spa.js?v=43"></script>
 </body>
 </html>

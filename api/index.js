@@ -118,11 +118,39 @@ async function listAllLogs() {
   return listAll(LOG_PREFIX);
 }
 
+/**
+ * Cache RAM status pembayaran (hidden/lunas).
+ * Alasan: blob baru konsisten 18-25 detik setelah ditulis. Dulu, hide banyak baris
+ * berurutan membuat tiap request membaca blob basi lalu menimpa hasil hide sebelumnya
+ * -> sebagian hide "undo" sendiri setelah refresh. Sekarang tulisan langsung masuk RAM
+ * dan pembacaan memakai RAM selama jendela segar, lalu di-union dengan isi blob.
+ */
+const PAY_MEM_FRESH = 5000;
+let _payMem = null;
+let _payAt = 0;
+
+function payUnion(base, extra) {
+  const out = Object.assign({}, base || {});
+  Object.keys(extra || {}).forEach((k) => {
+    const a = out[k], b = extra[k];
+    if (!a) { out[k] = b; return; }
+    const ta = String(a.updated_at || ''), tb = String(b.updated_at || '');
+    out[k] = tb >= ta ? b : a;
+  });
+  return out;
+}
+
 /** Semua status pembayaran: key = `${tgl}__${stambuk}` */
 async function readPayments() {
+  if (_payMem && (Date.now() - _payAt) < PAY_MEM_FRESH) return _payMem;
   try {
     const saved = await readJsonOrNull('db/pay.json');
-    if (saved && typeof saved === 'object' && !Array.isArray(saved)) return saved;
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      // gabung dengan tulisan RAM yang belum kebaca di blob
+      const merged = _payMem ? payUnion(saved, _payMem) : saved;
+      _payMem = merged; _payAt = _payAt || 0;
+      return merged;
+    }
   } catch {}
   // fallback: scan lama (cuma jalan sekali, abis itu mark migrated)
   if (await isMigrated()) return {};
@@ -137,6 +165,11 @@ async function readPayments() {
 
 /** Gabungkan log dengan status bayar (tidak ada record = belum lunas) */
 async function writePayments(map) {
+  // write-through: RAM dulu supaya request berikutnya tidak membaca blob basi.
+  // Sengaja TIDAK membaca blob lagi di sini: unpay menghapus key, dan penggabungan
+  // akan menghidupkan kembali key yang baru dihapus.
+  _payMem = Object.assign({}, map);
+  _payAt = Date.now();
   await writeJson('db/pay.json', map);
 }
 
@@ -664,6 +697,41 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Set hidden untuk BANYAK tagihan sekaligus — 1 tulis (hemat Advanced ops).
+    // body: { items: [{ tgl, stambuk, nama }], hidden: true|false, password, penerima }
+    if (action === 'hidden_bulk') {
+      if (!isAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah' });
+      }
+      const items = Array.isArray(body.items) ? body.items : [];
+      const hidden = body.hidden !== false;
+      if (!items.length) return send(res, 400, { ok: false, error: 'items kosong' });
+      try {
+        const payMap = await readPayments();
+        let changed = 0;
+        for (const it of items) {
+          const tgl = String(it.tgl || '').trim();
+          const payKey = String(it.stambuk || it.nama || '').trim();
+          if (!tgl || !payKey) continue;
+          const key = `${tgl}__${payKey}`;
+          const existing = payMap[key] || { tgl, stambuk: payKey, nama: it.nama || '', lunas: false, hidden: false };
+          existing.hidden = hidden;
+          if (hidden) {
+            existing.lunas = true;
+            existing.tgl_lunas = existing.tgl_lunas || todayWIB();
+            existing.penerima = existing.penerima || body.penerima || 'Petugas LIS';
+          }
+          existing.updated_at = nowWIB();
+          payMap[key] = existing;
+          changed++;
+        }
+        await writePayments(payMap);
+        return send(res, 200, { ok: true, changed, hidden });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal hidden massal: ' + err.message });
+      }
+    }
+
     // Deduplikasi log (hapus backfill duplikat) — hapus baris yang kontennya sama dengan baris lebih awal
     if (action === 'dedupe_logs') {
       if (!isAdmin(body.password)) {
@@ -782,6 +850,8 @@ module.exports = async (req, res) => {
         _logsMem = { at: 0, data: [] };
         _logsReadAt = 0;
         _lastDedupeAt = 0;
+        _payMem = null;
+        _payAt = 0;
         // 1) Kosongkan store baru (satu blob) — INI yang dipakai sekarang
         let cleared = 0;
         try { await writeJson(LOGS_DB, []); cleared++; } catch (e) { console.warn('clear logs:', e.message); }
