@@ -13,6 +13,8 @@ const LOGS_DB = 'db/logs.json';
 // Blob Vercel butuh 18-25 dtk untuk konsisten; read-modify-write pada satu file
 // membuat simpan berurutan saling menimpa (entri terakhir/pertama hilang).
 const ENTRY_PREFIX = 'db/entry/';
+// versi kode server — dipakai untuk memastikan deploy sudah jalan
+const SERVER_VERSION = 'v48';
 const MIGRATED_FLAG = 'db/_migrated.json';
 const LEGACY_MERGE_FLAG = 'db/_legacy_merged.json';
 
@@ -518,7 +520,7 @@ module.exports = async (req, res) => {
   // ---------- GET ----------
   if (req.method === 'GET') {
     if (!action || action === 'ping') {
-      return send(res, 200, { ok: true, mode: 'vercel', ts: nowWIB() });
+      return send(res, 200, { ok: true, mode: 'vercel', version: SERVER_VERSION, ts: nowWIB() });
     }
 
     // Master anggota + database pengurus LIS
