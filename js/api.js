@@ -87,6 +87,18 @@
 
     save: function (rec) { return post('save', rec); },
     saveBulk: function (o) { return post('save_bulk', o); },
+    // Dipakai saat tab ditutup: fetch biasa dibatalkan browser, keepalive tidak.
+    saveBulkBeacon: function (o) {
+      if (!enabled()) return false;
+      try {
+        fetch(base() + '?action=save_bulk', {
+          method: 'POST', keepalive: true, cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({ action: 'save_bulk' }, o || {})),
+        }).catch(function () {});
+        return true;
+      } catch (e) { return false; }
+    },
     pay: function (o) { return post('pay', o); },
     unpay: function (o) { return post('unpay', o); },
     payBulk: function (o) { return post('pay_bulk', o); },

@@ -129,6 +129,38 @@ const PAY_MEM_FRESH = 5000;
 let _payMem = null;
 let _payAt = 0;
 
+/**
+ * Kunci tulis. Dua permintaan simpan yang datang hampir bersamaan (klik cepat, atau
+ * simpan tunggal berbarengan dengan flush antrian) dulu sama-sama membaca snapshot
+ * blob yang sama lalu saling menimpa — server menjawab ok, tapi entri terakhir hilang.
+ * Sekarang semua baca-ubah-tulis dijalankan berurutan.
+ */
+function makeWriteLock() {
+  let tail = Promise.resolve();
+  return function withLock(fn) {
+    const run = tail.then(fn, fn);
+    tail = run.then(() => {}, () => {});
+    return run;
+  };
+}
+const withLogsLock = makeWriteLock();
+const withPayLock = makeWriteLock();
+
+/** Baca segar untuk operasi tulis: lewati cache RAM supaya snapshot paling baru. */
+async function readLogsFresh() { _logsReadAt = 0; return readAllLogsFast(); }
+async function readPaymentsFresh() { _payAt = 0; return readPayments(); }
+
+// Penanda hapus pembayaran: blob masih bisa menyajikan key lama 18-25 dtk, dan
+// union dengan RAM akan menghidupkan lagi key yang baru dihapus (unpay).
+const _payDel = new Map();
+function markPayDeleted(key) { _payDel.set(key, Date.now()); }
+function isPayDeleted(key) {
+  const at = _payDel.get(key);
+  if (!at) return false;
+  if (Date.now() - at > 60000) { _payDel.delete(key); return false; }
+  return true;
+}
+
 function payUnion(base, extra) {
   const out = Object.assign({}, base || {});
   Object.keys(extra || {}).forEach((k) => {
@@ -137,6 +169,7 @@ function payUnion(base, extra) {
     const ta = String(a.updated_at || ''), tb = String(b.updated_at || '');
     out[k] = tb >= ta ? b : a;
   });
+  Object.keys(out).forEach((k) => { if (isPayDeleted(k)) delete out[k]; });
   return out;
 }
 
@@ -507,7 +540,8 @@ module.exports = async (req, res) => {
         return send(res, 400, { ok: false, error: 'items wajib array' });
       }
       try {
-        const allLogs = await readAllLogsFast();
+        return await withLogsLock(async () => {
+        const allLogs = await readLogsFresh();
         const added = [];
         for (const bodyItem of items) {
           if (!bodyItem.nama) continue;
@@ -542,6 +576,7 @@ module.exports = async (req, res) => {
         }
         await writeAllLogsFast(allLogs);
         return send(res, 200, { ok: true, count: added.length, skipped: items.length - added.length });
+        });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal bulk save: ' + err.message });
       }
@@ -573,7 +608,8 @@ module.exports = async (req, res) => {
       };
       try {
         // Simpan ke store cepat (satu blob) — cek duplikat dulu
-        const allLogs = await readAllLogsFast();
+        return await withLogsLock(async () => {
+        const allLogs = await readLogsFresh();
         const cid = String(body.id || body.client_id || '');
         if (cid) rec.client_id = cid;
         const dup = cid ? allLogs.some(l => String(l.client_id || '') === cid) : false;
@@ -583,6 +619,7 @@ module.exports = async (req, res) => {
         allLogs.push(rec);
         await writeAllLogsFast(allLogs);
         return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date });
+        });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menyimpan: ' + err.message });
       }
@@ -601,10 +638,12 @@ module.exports = async (req, res) => {
         return send(res, 400, { ok: false, error: 'tgl dan stambuk/nama wajib diisi' });
       }
       try {
-        const payMap = await readPayments();
+        return await withPayLock(async () => {
+        const payMap = await readPaymentsFresh();
         const key = `${tgl}__${payKey}`;
         if (action === 'unpay') {
           delete payMap[key];
+          markPayDeleted(key);
         } else {
           payMap[key] = {
             tgl,
@@ -619,6 +658,7 @@ module.exports = async (req, res) => {
         }
         await writePayments(payMap);
         return send(res, 200, { ok: true, payment: payMap[key] || null });
+        });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menyimpan status bayar: ' + err.message });
       }
@@ -639,7 +679,8 @@ module.exports = async (req, res) => {
       const penerima = body.penerima || 'Petugas LIS';
       const tglLunas = body.tgl_lunas || todayWIB();
       try {
-        const payMap = await readPayments();
+        return await withPayLock(async () => {
+        const payMap = await readPaymentsFresh();
         for (const it of items) {
           const tgl = String(it.tgl || '').trim();
           const stambuk = String(it.stambuk || '').trim();
@@ -660,6 +701,7 @@ module.exports = async (req, res) => {
         }
         await writePayments(payMap);
         return send(res, 200, { ok: true, count: items.length });
+        });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal bulk pay: ' + err.message });
       }
@@ -678,7 +720,8 @@ module.exports = async (req, res) => {
         return send(res, 400, { ok: false, error: 'tgl dan stambuk/nama wajib diisi' });
       }
       try {
-        const payMap = await readPayments();
+        return await withPayLock(async () => {
+        const payMap = await readPaymentsFresh();
         const key = `${tgl}__${payKey}`;
         const existing = payMap[key] || { tgl, stambuk: payKey, nama: body.nama || '', lunas: false, hidden: false };
         existing.hidden = !existing.hidden;
@@ -692,6 +735,7 @@ module.exports = async (req, res) => {
         payMap[key] = existing;
         await writePayments(payMap);
         return send(res, 200, { ok: true, payment: existing });
+        });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal toggle hidden: ' + err.message });
       }
@@ -707,7 +751,8 @@ module.exports = async (req, res) => {
       const hidden = body.hidden !== false;
       if (!items.length) return send(res, 400, { ok: false, error: 'items kosong' });
       try {
-        const payMap = await readPayments();
+        return await withPayLock(async () => {
+        const payMap = await readPaymentsFresh();
         let changed = 0;
         for (const it of items) {
           const tgl = String(it.tgl || '').trim();
@@ -727,6 +772,7 @@ module.exports = async (req, res) => {
         }
         await writePayments(payMap);
         return send(res, 200, { ok: true, changed, hidden });
+        });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal hidden massal: ' + err.message });
       }
@@ -738,7 +784,8 @@ module.exports = async (req, res) => {
         return send(res, 401, { ok: false, error: 'Password admin salah' });
       }
       try {
-        const allLogs = await readAllLogsFast();
+        return await withLogsLock(async () => {
+        const allLogs = await readLogsFresh();
         const key = (l) => [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa, (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
         // Kumpulkan key dari batch asli (terlama per grup) — jangan hapus record asli
         const sorted = [...allLogs].sort((a, b) =>
@@ -752,6 +799,7 @@ module.exports = async (req, res) => {
         }
         await writeAllLogsFast(deduped);
         return send(res, 200, { ok: true, before: allLogs.length, after: deduped.length, removed: allLogs.length - deduped.length });
+        });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal dedupe: ' + err.message });
       }
@@ -766,11 +814,13 @@ module.exports = async (req, res) => {
       if (!id) return send(res, 400, { ok: false, error: 'id_log wajib diisi' });
       try {
         // hapus dari store cepat
-        const allLogs = await readAllLogsFast();
+        return await withLogsLock(async () => {
+        const allLogs = await readLogsFresh();
         const removed = allLogs.filter((l) => (l.id_log || l.id) !== id);
         if (removed.length === allLogs.length) return send(res, 404, { ok: false, error: 'Log tidak ditemukan' });
         await writeAllLogsFast(removed);
         return send(res, 200, { ok: true, deleted: allLogs.length - removed.length });
+        });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menghapus log: ' + err.message });
       }
