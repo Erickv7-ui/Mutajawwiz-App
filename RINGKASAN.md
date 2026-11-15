@@ -378,6 +378,22 @@ device itu dan belum masuk server.
   (b) simpan 1 lalu tunggu 37 detik → server naik 1 tanpa disentuh;
   (c) simpan 1 lalu pindah menu → server naik 1 dalam 4 detik. 0 error konsol.
 - Kuota: tetap 1 put per kirim (Advanced), hanya lebih cepat, bukan lebih sering.
+#### v49 — web lega lagi: baca blob tidak berlipat (PR #65)
+- **Kenapa v48 terasa berat**: tiap simpan memanggil `readLogsFresh()` (baca paksa
+  dari blob = 1 list `db/entry/` + baca SEMUA file entry), dan tiap flush klien
+  membaca ulang seluruh `action=logs` (~54 KB) untuk verifikasi antrian. Makin
+  banyak input hari itu, makin berat.
+- Perbaikan:
+  - `save` / `save_bulk` cukup pakai cache RAM write-through untuk cek `client_id`,
+    tidak lagi baca paksa blob. Simpan jadi 1 tulis saja.
+  - `save_bulk` membalas `acked` (daftar id yang sudah pasti tersimpan). Klien
+    memotong antrian dari jawaban itu — request `logs` tambahan per flush hilang.
+  - Cache baca 5 dtk → 10 dtk.
+  - Compaction diberi penjaga `_compacting` supaya tidak jalan dobel.
+- Hasil ukur live: simpan 0,42-1,4 dtk (dulu 2-3,5 dtk + baca penuh tiap simpan);
+  `logs` 0,43 dtk, `bootstrap` 0,69 dtk; uji UI 1 absen → hanya 1 request
+  (`save_bulk`), tanpa `logs`, antrian kosong dalam 6 dtk.
+
 #### v48 — simpan absensi append-only, entri terakhir tidak hilang lagi (PR #60-#62)
 - **Penyebab entri hilang**: `db/logs.json` di Vercel Blob baru terbaca konsisten
   18-25 detik setelah ditulis. Semua jalur simpan memakai pola baca-ubah-tulis:
