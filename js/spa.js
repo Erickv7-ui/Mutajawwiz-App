@@ -1953,6 +1953,8 @@
       document.getElementById('tag-search').addEventListener('input', renderTagihan);
       document.getElementById('tag-status-filter').addEventListener('change', renderTagihan);
       document.getElementById('tag-rayon-filter').addEventListener('change', renderTagihan);
+      const tglFilterEl = document.getElementById('tag-tgl-filter');
+      if (tglFilterEl) tglFilterEl.addEventListener('change', renderTagihan);
       document.getElementById('tag-tampilkan').addEventListener('click', () => {
         document.getElementById('tag-search').value = '';
         document.getElementById('tag-status-filter').value = '';
