@@ -275,7 +275,7 @@ function dedupeLogs(arr) {
 let _logsMem = { at: 0, data: [] };
 let _logsReadAt = 0;
 let _lastDedupeAt = 0;
-const LOGS_MEM_TTL = 5000;   // pakai RAM saja kalau pembacaan terakhir < 5 detik
+const LOGS_MEM_TTL = 10000;  // pakai RAM saja kalau pembacaan terakhir < 10 detik
 const LOGS_MEM_FRESH = 3000;  // union RAM HANYA 3 detik setelah tulis (write-through),
                               // lebih lama dari itu blob yang menang supaya data yang sudah
                               // dihapus tidak dibangkitkan lagi oleh cache RAM instance lain.
@@ -324,6 +324,8 @@ function isLogDeleted(id) {
 }
 
 /** Tulis snapshot penuh (dipakai dedupe / hapus semua) lalu buang file entry. */
+let _compacting = false;  // jangan jalankan dua compaction sekaligus (boros op + lambat)
+
 async function compactLogs(snapshot, files) {
   await writeJson(LOGS_DB, snapshot);
   for (const f of files || []) {
@@ -388,8 +390,11 @@ async function readAllLogsFast() {
   merged = await mergeLegacyStep(merged);
 
   // 5) rapikan kalau file entry sudah menumpuk
-  if (files.length > 40) {
-    compactLogs(merged, files).catch((e) => console.warn('compact logs gagal:', e.message));
+  if (files.length > 40 && !_compacting) {
+    _compacting = true;
+    compactLogs(merged, files)
+      .catch((e) => console.warn('compact logs gagal:', e.message))
+      .then(() => { _compacting = false; });
   }
   return merged;
 }
@@ -618,7 +623,10 @@ module.exports = async (req, res) => {
       }
       try {
         return await withLogsLock(async () => {
-        const allLogs = await readLogsFresh();
+        // Cukup pakai cache RAM (write-through). Baca paksa dari blob = 1 list +
+        // N get tiap simpan; itu yang bikin web berat. Dedupe client_id tetap
+        // jalan karena simpan sebelumnya langsung masuk RAM.
+        const allLogs = await readAllLogsFast();
         const added = [];
         for (const bodyItem of items) {
           if (!bodyItem.nama) continue;
@@ -654,7 +662,15 @@ module.exports = async (req, res) => {
         await appendLogEntries(added);
         _logsMem = { at: Date.now(), data: dedupeLogs((_logsMem.data || []).concat(added)) };
         _logsReadAt = Date.now();
-        return send(res, 200, { ok: true, count: added.length, skipped: items.length - added.length });
+        // acked = client_id yang sudah pasti ada di server (baru atau sudah pernah
+        // masuk). Klien pakai ini untuk memotong antrian, jadi tidak perlu membaca
+        // ulang seluruh logs setelah menyimpan.
+        const acked = added.map((r) => r.client_id || r.id_log)
+          .concat(items.map((x) => String((x && (x.id || x.client_id)) || '')).filter(Boolean));
+        return send(res, 200, {
+          ok: true, count: added.length, skipped: items.length - added.length,
+          acked: Array.from(new Set(acked)),
+        });
         });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal bulk save: ' + err.message });
@@ -688,7 +704,7 @@ module.exports = async (req, res) => {
       try {
         // Simpan ke store cepat (satu blob) — cek duplikat dulu
         return await withLogsLock(async () => {
-        const allLogs = await readLogsFresh();
+        const allLogs = await readAllLogsFast();
         const cid = String(body.id || body.client_id || '');
         if (cid) rec.client_id = cid;
         const dup = cid ? allLogs.some(l => String(l.client_id || '') === cid) : false;

@@ -364,16 +364,14 @@
       _flushing = true;
       const batch = pendingSync.slice(0, 50);
       try {
-        await window.LISApi.saveBulk({ items: batch });
-        // Server bisa menimpa kiriman ini kalau ada request lain yang membaca
-        // snapshot lama. Jadi antrian hanya dikosongkan untuk entri yang benar-benar
-        // sudah muncul di server; sisanya dikirim ulang (server menolak dobel lewat id).
+        // Server membalas daftar id yang sudah pasti tersimpan (`acked`). Dulu klien
+        // membaca ulang seluruh logs (50+ KB, 1 list + N get di server) tiap flush —
+        // itu yang bikin web berat. Sekarang cukup pakai jawaban simpan.
+        const res = await window.LISApi.saveBulk({ items: batch });
         let acked = null;
-        try {
-          const res = await window.LISApi.logs();
-          const list = Array.isArray(res) ? res : (res && res.data) || [];
-          acked = new Set(list.map(l => String(l.client_id || l.id_log || l.id || '')));
-        } catch (e) { acked = null; }
+        if (res && Array.isArray(res.acked) && res.acked.length) {
+          acked = new Set(res.acked.map(String));
+        }
         pendingSync = acked
           ? pendingSync.filter(r => !acked.has(String(r.id || r.id_log || '')))
           : pendingSync.slice(batch.length);
