@@ -371,7 +371,12 @@ async function readAllLogsFast() {
       merged = dedupeLogs(merged.concat(added.map(enrichLog)));
       if (deleted.size) merged = merged.filter((l) => !deleted.has(String(l.id_log || l.id || '')));
     }
-  } catch (e) { console.warn('baca file entry gagal:', e.message); }
+  } catch (e) {
+    // kalau ada file yang gagal dibaca, JANGAN compaction: file itu bisa terhapus
+    // padahal isinya belum masuk snapshot.
+    console.warn('baca file entry gagal:', e.message);
+    files = [];
+  }
 
   // 3) buang yang baru dihapus dari instance ini (blob bisa masih versi lama)
   merged = merged.filter((l) => !isLogDeleted(l.id_log || l.id || ''));
