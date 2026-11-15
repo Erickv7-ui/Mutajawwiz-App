@@ -378,6 +378,31 @@ device itu dan belum masuk server.
   (b) simpan 1 lalu tunggu 37 detik → server naik 1 tanpa disentuh;
   (c) simpan 1 lalu pindah menu → server naik 1 dalam 4 detik. 0 error konsol.
 - Kuota: tetap 1 put per kirim (Advanced), hanya lebih cepat, bukan lebih sering.
+#### v43 — hide massal tidak balik lagi + filter tanggal tagihan + XLSX urut kelas (PR #51)
+- **Penyebab hide "undo sendiri setelah refresh"**: status hidden/lunas disimpan di
+  `db/pay.json`, dan blob itu baru terbaca konsisten 18-25 detik setelah ditulis.
+  Dulu tiap baris di-hide lewat request sendiri; request kedua membaca blob basi
+  (belum ada hide pertama) lalu menulis ulang seluruh map tanpa hide sebelumnya.
+  Hasilnya hanya hide terakhir yang bertahan, sisanya hilang setelah refresh.
+- Perbaikan server: `readPayments()`/`writePayments()` sekarang pakai cache RAM
+  write-through (`_payMem`, jendela segar 5 detik). Tulisan langsung terbaca
+  request berikutnya, jadi hide berurutan tidak saling menimpa. Saat membaca blob,
+  isi RAM di-union dengan `updated_at` terbaru menang.
+- Perbaikan klien: tombol **HIDE** / **UNHIDE** di bilah massal mengirim SATU
+  request `hidden_bulk` untuk semua baris terpilih (1 Advanced op, bukan N).
+- Aksi baru `hidden_bulk` (password admin): set `hidden` true/false eksplisit untuk
+  banyak `{tgl, stambuk}` sekaligus.
+- `clearall` sekarang juga me-reset `_payMem` supaya status hidden tidak "hidup lagi"
+  dari cache setelah data dikosongkan.
+- **Filter per tanggal di menu Tagihan**: dropdown `#tag-tgl-filter` otomatis diisi
+  tanggal yang ada (terbaru di atas) dan bisa digabung dengan filter status/rayon/cari.
+  Tombol Reset Filter ikut mengosongkannya.
+- **Ekspor XLSX/CSV urut kelas tertinggi**: `sortByKelas()` mengurutkan kelas 3 → 2 → 1
+  (angka maupun romawi), lalu nama A-Z, lalu jam catat.
+- Hasil uji live v44: 5 toggle berurutan tanpa jeda → 5/5 hidden bertahan; bulk hide
+  3 tagihan → tetap 3 hidden setelah refresh penuh; bulk unhide 5 → 5 tampil lagi;
+  XLSX 2026-11-15 urut `3,3,...,2,II,1`. Data uji dihapus, total log kembali 104.
+
 #### v42 — absen dobel boleh, tanggal ekspor tanpa jam (PR #49)
 - **Absen dobel sekarang boleh.** Orang sama, tanggal sama, bahasa sama bisa dicatat
   berkali-kali (dua pelanggaran berbeda di hari yang sama). Toast peringatan
