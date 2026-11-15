@@ -85,7 +85,7 @@
     if (!rows.length) { toast('Tidak ada data untuk diunduh.', 'red'); return; }
     var headers = ['No', 'Stambuk', 'Nama', 'Kelas', 'Kamar', 'Rayon', 'Bahasa', 'Ucapan', 'Petugas', 'Tanggal', 'Waktu', 'Status', 'Penerima'];
     var lines = [headers.join(',')];
-    rows.forEach(function (r, i) {
+    sortByKelas(rows).forEach(function (r, i) {
       var cells = [i + 1, r.stambuk || '', r.nama || '', r.kelas || '', r.kamar || '', r.rayon || '',
         r.bahasa || '', r.ucapan || '', r.pengabsen || '', dOnly(r.tgl || r.timestamp), r.waktu || '',
         r.lunas ? 'Lunas' : 'Belum', r.penerima || ''];
@@ -118,6 +118,29 @@
     return String(r.bahasa || '').toLowerCase().indexOf('jav') !== -1 ? 'Javanese Language' : 'Indonesian Language';
   }
 
+  /** Peringkat kelas: makin tinggi makin besar. "3"/"III"/"3A" -> 3 */
+  function kelasRank(v) {
+    var s = String(v || '').trim().toUpperCase();
+    var num = /(\d+)/.exec(s);
+    if (num) return parseInt(num[1], 10);
+    var roman = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
+    if (roman[s]) return roman[s];
+    var pre = /^(VI|IV|V|III|II|I)\b/.exec(s);
+    if (pre && roman[pre[1]]) return roman[pre[1]];
+    return 0;
+  }
+
+  /** Urut kelas tertinggi dulu, lalu nama, lalu jam catat */
+  function sortByKelas(rows) {
+    return rows.slice().sort(function (a, b) {
+      var ra = kelasRank(a.tingkat || a.kelas), rb = kelasRank(b.tingkat || b.kelas);
+      if (ra !== rb) return rb - ra;
+      var na = String(a.nama || '').toLowerCase(), nb = String(b.nama || '').toLowerCase();
+      if (na !== nb) return na < nb ? -1 : 1;
+      return String(a.timestamp || '').localeCompare(String(b.timestamp || ''));
+    });
+  }
+
   function buildSheets(rows) {
     var byDate = {};
     rows.forEach(function (r) {
@@ -125,9 +148,7 @@
       (byDate[d] = byDate[d] || []).push(r);
     });
     return Object.keys(byDate).sort().map(function (d) {
-      var list = byDate[d].slice().sort(function (a, b) {
-        return String(a.timestamp || '').localeCompare(String(b.timestamp || ''));
-      });
+      var list = sortByKelas(byDate[d]);
       return {
         name: global.AbsensiXLSX.sheetNameForDate(d),
         rows: list.map(function (r) {

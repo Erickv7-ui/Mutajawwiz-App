@@ -91,6 +91,7 @@
     unpay: function (o) { return post('unpay', o); },
     payBulk: function (o) { return post('pay_bulk', o); },
     toggleHidden: function (o) { return post('toggle_hidden', o); },
+    hiddenBulk: function (o) { return post('hidden_bulk', o); },
     deleteLog: function (o) { return post('deleteLog', o); },
     dbSave: function (o) { return post('db-save', o); },
     dbDelete: function (o) { return post('db-delete', o); },

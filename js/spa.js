@@ -1201,6 +1201,20 @@
       const q = document.getElementById('tag-search').value.toLowerCase();
       const st = document.getElementById('tag-status-filter').value;
       const ry = document.getElementById('tag-rayon-filter').value;
+      const dtEl = document.getElementById('tag-tgl-filter');
+      const dt = dtEl ? dtEl.value : '';
+
+      // isi pilihan tanggal dari data yang ada (terbaru di atas), pilihan lama dipertahankan
+      if (dtEl) {
+        const dates = Array.from(new Set(allBills.map(b => String(b.tgl || '').slice(0, 10)).filter(Boolean))).sort().reverse();
+        const sig = dates.join(',');
+        if (dtEl.dataset.sig !== sig) {
+          dtEl.dataset.sig = sig;
+          dtEl.innerHTML = '<option value="">Semua Tanggal</option>' +
+            dates.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
+          dtEl.value = dates.includes(dt) ? dt : '';
+        }
+      }
 
       const filtered = allBills.filter(b => {
         const matchQ = !q || b.nama.toLowerCase().includes(q) || b.kamar.toLowerCase().includes(q);
@@ -1209,7 +1223,8 @@
           || (st === 'belum' && !b.lunas)
           || (st === 'hidden' && b.hidden);
         const matchRy = !ry || b.rayon === ry;
-        return matchQ && matchSt && matchRy;
+        const matchDt = !dt || String(b.tgl || '').slice(0, 10) === dt;
+        return matchQ && matchSt && matchRy && matchDt;
       });
 
       const tbody = document.getElementById('tagihan-list');
@@ -1373,6 +1388,67 @@
         showToast(newHidden ? 'Pembayaran disembunyikan dari total.' : 'Pembayaran ditampilkan kembali.', 'yellow');
       } catch (err) {
         showToast('Gagal toggle hidden: ' + err.message, 'red');
+      }
+    }
+
+    /**
+     * Hide / Unhide BANYAK tagihan terpilih dalam SATU kiriman.
+     * Dulu tiap baris mengirim request sendiri, dan karena blob pembayaran baru
+     * konsisten ~20 detik kemudian, request berikutnya membaca data basi lalu
+     * menimpa hasil hide sebelumnya -> sebagian hide balik sendiri setelah refresh.
+     */
+    async function hideBulkSelected(hidden) {
+      if (!isAdminUnlocked) {
+        showToast('Buka kunci sesi admin dulu (halaman Pengawasan & PIN).', 'red');
+        return;
+      }
+      if (selectedBulkKeys.size === 0) {
+        showToast('Pilih tagihan dulu.', 'yellow');
+        return;
+      }
+      const serverPass = serverSecret();
+      const bills = getConsolidatedTagihan();
+      const keys = Array.from(selectedBulkKeys);
+      const items = [];
+      keys.forEach(k => {
+        const b = bills.find(x => x.key === k);
+        if (!b) return;
+        const stambuks = Array.from(new Set((b.logs || []).map(l => l.stambuk).filter(Boolean)));
+        const targets = stambuks.length ? stambuks : [b.stambuk];
+        targets.forEach(stambuk => items.push({ tgl: b.tgl, stambuk, nama: b.nama }));
+      });
+      if (items.length === 0) { showToast('Tagihan tidak ditemukan.', 'red'); return; }
+
+      const btn = document.getElementById(hidden ? 'btn-bulk-hide' : 'btn-bulk-unhide');
+      const label = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'MENYIMPAN...'; }
+      try {
+        if (cloudOn() && serverPass) {
+          await window.LISApi.hiddenBulk({ items, hidden: !!hidden, password: serverPass, penerima: 'Petugas LIS' });
+        }
+        const today = getToday();
+        keys.forEach(k => {
+          allLogs.forEach(l => {
+            if (`${l.tgl}__${l.stambuk || l.nama}` === k) {
+              l.hidden = !!hidden;
+              if (hidden) {
+                l.lunas = true;
+                l.tgl_lunas = l.tgl_lunas || today;
+                l.penerima = l.penerima || 'Petugas LIS';
+              }
+            }
+          });
+        });
+        selectedBulkKeys.clear();
+        saveLogs();
+        renderTagihan();
+        renderDashboard();
+        updateBulkBar();
+        showToast(hidden ? `${items.length} tagihan disembunyikan dari total.` : `${items.length} tagihan ditampilkan lagi.`, 'yellow');
+      } catch (err) {
+        showToast('Gagal ' + (hidden ? 'hide' : 'unhide') + ' massal: ' + err.message, 'red');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = label; }
       }
     }
 
@@ -1881,6 +1957,8 @@
         document.getElementById('tag-search').value = '';
         document.getElementById('tag-status-filter').value = '';
         document.getElementById('tag-rayon-filter').value = '';
+        const dtReset = document.getElementById('tag-tgl-filter');
+        if (dtReset) dtReset.value = '';
         renderTagihan();
       });
 
