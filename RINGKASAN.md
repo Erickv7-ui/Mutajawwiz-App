@@ -378,6 +378,37 @@ device itu dan belum masuk server.
   (b) simpan 1 lalu tunggu 37 detik → server naik 1 tanpa disentuh;
   (c) simpan 1 lalu pindah menu → server naik 1 dalam 4 detik. 0 error konsol.
 - Kuota: tetap 1 put per kirim (Advanced), hanya lebih cepat, bukan lebih sering.
+#### v48 — simpan absensi append-only, entri terakhir tidak hilang lagi (PR #60-#62)
+- **Penyebab entri hilang**: `db/logs.json` di Vercel Blob baru terbaca konsisten
+  18-25 detik setelah ditulis. Semua jalur simpan memakai pola baca-ubah-tulis:
+  request kedua membaca versi lama (belum ada entri pertama) lalu menulis seluruh
+  snapshot tanpa entri itu. Server tetap menjawab `ok`, jadi di layar seolah
+  tersimpan padahal hilang. Uji 8 `save_bulk` serentak sebelum perbaikan: hanya
+  1/8 yang bertahan.
+- Kunci tulis per instance (v46) dan verifikasi tulis (v47) tidak cukup: dua
+  request bisa mendarat di instance Vercel berbeda dan sama-sama membaca versi lama.
+- Perbaikan v48 — simpan tidak lagi menyentuh satu file bersama:
+  - `save` / `save_bulk` menulis file sendiri `db/entry/e-<waktu>-<acak>.json`
+    (append-only, 1 tulis, tanpa baca dulu). Dua simpan berbarengan mustahil saling
+    menimpa.
+  - Hapus log menulis penanda `db/entry/d-<waktu>-<acak>.json`, bukan menulis ulang
+    snapshot. Instance yang baru menghapus juga menyimpan daftar id terhapus di RAM
+    (90 detik) supaya blob yang masih basi tidak menghidupkannya lagi.
+  - Baca (`logs`, `bootstrap`, `export`) = snapshot `db/logs.json` + semua file entry,
+    dedupe by id, buang yang bertanda hapus, cache RAM 5 detik.
+  - Compaction otomatis: kalau file entry lebih dari 40, snapshot ditulis ulang lalu
+    file entry dibuang. Compaction **dilewati** kalau ada file entry yang gagal
+    dibaca (kalau tidak, isinya bisa terhapus sebelum masuk snapshot).
+  - `clearall` dan dedupe tetap menulis snapshot penuh lalu membuang file entry.
+  - `action=ping` sekarang mengembalikan `version` supaya deploy bisa dipastikan.
+- Klien: antrian hanya dikosongkan untuk entri yang benar-benar sudah muncul di
+  `action=logs`; sisanya dikirim ulang otomatis (server tolak dobel lewat `client_id`).
+  Flush tetap 4 detik setelah entri terakhir + `keepalive` saat tab ditutup.
+- Hasil uji live: 8 `save_bulk` serentak → 8/8 tersimpan dalam 5 detik; 45 simpan
+  berurutan → 45/45 dan total tidak berubah setelah compaction; uji UI (2 absen
+  beruntun lalu tab langsung ditutup) → keduanya masuk server lewat beacon.
+  Data uji dihapus, total log kembali 112.
+
 #### v43 — hide massal tidak balik lagi + filter tanggal tagihan + XLSX urut kelas (PR #51)
 - **Penyebab hide "undo sendiri setelah refresh"**: status hidden/lunas disimpan di
   `db/pay.json`, dan blob itu baru terbaca konsisten 18-25 detik setelah ditulis.
