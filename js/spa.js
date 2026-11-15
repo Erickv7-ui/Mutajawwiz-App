@@ -356,9 +356,12 @@
       return flushPending(true);
     }
 
+    let _flushing = false;
     async function flushPending(force) {
       if (!cloudOn() || !pendingSync.length) return false;
       if (!force && pendingSync.length < 5) return false;
+      if (_flushing) return false;
+      _flushing = true;
       const batch = pendingSync.slice(0, 50);
       try {
         await window.LISApi.saveBulk({ items: batch });
@@ -370,7 +373,21 @@
         console.warn('[sync] gagal:', e.message);
         setConnectionBadge('local');
         return false;
+      } finally {
+        _flushing = false;
       }
+    }
+
+    /**
+     * Kirim antrian 4 dtk setelah entri terakhir, jadi entri terakhir tidak
+     * menggantung menunggu 5 entri / 30 dtk. Beberapa entri beruntun tetap
+     * jadi 1 request (hemat Advanced ops).
+     */
+    let _flushTimer = null;
+    function scheduleFlush(delay) {
+      if (!cloudOn()) return;
+      if (_flushTimer) clearTimeout(_flushTimer);
+      _flushTimer = setTimeout(() => { _flushTimer = null; flushPending(true); }, delay || 4000);
     }
 
     // ===================== CLOUD SYNC =====================
@@ -1018,7 +1035,7 @@
       if (btn) { btn.disabled = true; btn.textContent = 'MENYIMPAN...'; }
 
       const rec = {
-        id: 'L-' + Date.now(),
+        id: 'L-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
         _localAt: Date.now(),
         tgl,
         waktu: new Date().toTimeString().slice(0, 5),
@@ -1049,6 +1066,7 @@
         renderInputLogToday();
         renderDashboard();
         const flushed = await flushPending();
+        scheduleFlush();
         showToast(`Tercatat: ${m.nama} (${bahasa})${flushed ? ' • tersinkron' : ''}`, 'green');
       } catch (err) {
         showToast('Gagal menyimpan: ' + err.message, 'red');
@@ -1830,7 +1848,15 @@
       if (window.LISDb) window.LISDb.init();
 
       // Flush pending ke cloud saat tab ditutup / pindah tab
-      window.addEventListener('pagehide', () => { if (pendingSync.length) flushPending(true); });
+      // Tab ditutup: fetch biasa sering dibatalkan, jadi kirim ulang pakai keepalive.
+      // Antrian tidak dikosongkan di sini; server menolak kiriman ulang lewat client_id.
+      window.addEventListener('pagehide', () => {
+        if (!pendingSync.length) return;
+        if (window.LISApi && window.LISApi.saveBulkBeacon) {
+          window.LISApi.saveBulkBeacon({ items: pendingSync.slice(0, 50) });
+        }
+        flushPending(true);
+      });
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') flushPending(true);
         else flushPendingThrottled();
