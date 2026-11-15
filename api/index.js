@@ -148,6 +148,28 @@ const withPayLock = makeWriteLock();
 
 /** Baca segar untuk operasi tulis: lewati cache RAM supaya snapshot paling baru. */
 async function readLogsFresh() { _logsReadAt = 0; return readAllLogsFast(); }
+
+/**
+ * Tulis log + verifikasi lintas-instance. Vercel bisa menjalankan beberapa
+ * instance sekaligus; instance lain yang menulis dengan snapshot lama bisa
+ * menghapus entri yang baru kita simpan. Setelah menulis, cek ulang: kalau ada
+ * entri yang hilang, tulis lagi (maks 3 putaran).
+ */
+async function writeLogsVerified(logs, mustExist, mustNotExist) {
+  await writeAllLogsFast(logs);
+  const need = (mustExist || []).map(r => String(r.client_id || r.id_log || r.id || ''));
+  const gone = (mustNotExist || []).map(String);
+  if (!need.length && !gone.length) return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const check = await readLogsFresh();
+    const haveIds = new Set(check.map(l => String(l.client_id || l.id_log || l.id || '')));
+    const missing = (mustExist || []).filter(r => !haveIds.has(String(r.client_id || r.id_log || r.id || '')));
+    const back = gone.length ? check.filter(l => gone.includes(String(l.client_id || l.id_log || l.id || ''))) : [];
+    if (!missing.length && !back.length) return;
+    const next = check.filter(l => !gone.includes(String(l.client_id || l.id_log || l.id || ''))).concat(missing);
+    await writeAllLogsFast(next);
+  }
+}
 async function readPaymentsFresh() { _payAt = 0; return readPayments(); }
 
 // Penanda hapus pembayaran: blob masih bisa menyajikan key lama 18-25 dtk, dan
@@ -574,7 +596,7 @@ module.exports = async (req, res) => {
             : false;
           if (!dup) { allLogs.push(rec); added.push(rec); }
         }
-        await writeAllLogsFast(allLogs);
+        await writeLogsVerified(allLogs, added, []);
         return send(res, 200, { ok: true, count: added.length, skipped: items.length - added.length });
         });
       } catch (err) {
@@ -617,7 +639,7 @@ module.exports = async (req, res) => {
           return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date, skipped: true });
         }
         allLogs.push(rec);
-        await writeAllLogsFast(allLogs);
+        await writeLogsVerified(allLogs, [rec], []);
         return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date });
         });
       } catch (err) {
@@ -818,7 +840,7 @@ module.exports = async (req, res) => {
         const allLogs = await readLogsFresh();
         const removed = allLogs.filter((l) => (l.id_log || l.id) !== id);
         if (removed.length === allLogs.length) return send(res, 404, { ok: false, error: 'Log tidak ditemukan' });
-        await writeAllLogsFast(removed);
+        await writeLogsVerified(removed, [], [id]);
         return send(res, 200, { ok: true, deleted: allLogs.length - removed.length });
         });
       } catch (err) {
