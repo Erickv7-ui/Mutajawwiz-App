@@ -7,6 +7,9 @@
   var el = function (id) { return document.getElementById(id); };
   var H = function () { return global.LIS || {}; };
 
+  /** Tanggal saja — buang bagian jam kalau ada (mis. '2026-11-15 06:21' / ISO) */
+  function dOnly(v) { return String(v || '').slice(0, 10); }
+
   function today() { return (H().getToday ? H().getToday() : new Date().toISOString().slice(0, 10)); }
   function rupiah(n) { return H().formatRupiah ? H().formatRupiah(n) : 'Rp' + (n || 0); }
   function esc(s) { return H().escapeHtml ? H().escapeHtml(s) : String(s == null ? '' : s); }
@@ -84,7 +87,7 @@
     var lines = [headers.join(',')];
     rows.forEach(function (r, i) {
       var cells = [i + 1, r.stambuk || '', r.nama || '', r.kelas || '', r.kamar || '', r.rayon || '',
-        r.bahasa || '', r.ucapan || '', r.pengabsen || '', r.tgl || '', r.waktu || '',
+        r.bahasa || '', r.ucapan || '', r.pengabsen || '', dOnly(r.tgl || r.timestamp), r.waktu || '',
         r.lunas ? 'Lunas' : 'Belum', r.penerima || ''];
       lines.push(cells.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','));
     });
@@ -118,7 +121,7 @@
   function buildSheets(rows) {
     var byDate = {};
     rows.forEach(function (r) {
-      var d = String(r.tgl || r.timestamp || '').slice(0, 10);
+      var d = dOnly(r.tgl || r.timestamp);
       (byDate[d] = byDate[d] || []).push(r);
     });
     return Object.keys(byDate).sort().map(function (d) {

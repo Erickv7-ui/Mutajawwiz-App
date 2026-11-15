@@ -441,7 +441,8 @@
      * Identitas sebenarnya: satu orang, satu tanggal, satu bahasa.
      */
     function logSig(l) {
-      return [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa || 'Indonesian'].join('|');
+      return [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa || 'Indonesian',
+        (l.ucapan || 'None').toLowerCase()].join('|');
     }
 
     function clearedAtMs() {
@@ -480,13 +481,30 @@
       // Kalau cloud masih menyajikan snapshot sebelum clearall, anggap kosong.
       const base = (clearTs && cloudAfterClear.length === 0 && cloud.length > 0) ? [] : cloudAfterClear;
 
-      const seen = new Set();
-      const merged = [];
-      for (const l of [...base, ...localKeep]) {
+      // Gabung ala multiset: jumlah entri per kunci = MAKSIMUM(cloud, lokal).
+      // - Entri kembar yang memang disengaja (absen dobel) tetap utuh.
+      // - Entri yang baru tersimpan lokal tapi belum muncul di cloud tetap tampil.
+      // - Duplikat lama (lokal vs cloud dengan pengabsen/kamar beda) tetap 1.
+      const cloudByKey = new Map();
+      for (const l of base) {
         const k = logSig(l);
-        if (seen.has(k)) continue;
-        seen.add(k);
-        merged.push(l);
+        if (!cloudByKey.has(k)) cloudByKey.set(k, []);
+        cloudByKey.get(k).push(l);
+      }
+      const localByKey = new Map();
+      for (const l of localKeep) {
+        const k = logSig(l);
+        if (!localByKey.has(k)) localByKey.set(k, []);
+        localByKey.get(k).push(l);
+      }
+      const merged = [];
+      for (const [k, list] of cloudByKey) {
+        merged.push(...list);
+        const extra = (localByKey.get(k) || []).length - list.length;
+        if (extra > 0) merged.push(...localByKey.get(k).slice(list.length));
+      }
+      for (const [k, list] of localByKey) {
+        if (!cloudByKey.has(k)) merged.push(...list);
       }
       allLogs = merged;
       try { enrichLogs(); } catch (e) {}
@@ -984,12 +1002,6 @@
         : 'border-2 border-black bg-white p-3.5 flex items-center gap-3 cursor-pointer transition-all';
     }
 
-    /** Sudah tercatat? orang + tanggal + bahasa sama → tolak biar denda tidak dobel */
-    function isDuplicateEntry(tgl, stambuk, bahasa) {
-      const norm = b => (b || 'Indonesian');
-      const match = l => l.tgl === tgl && l.stambuk === stambuk && norm(l.bahasa) === norm(bahasa);
-      return (allLogs || []).some(match) || (pendingSync || []).some(match);
-    }
 
     async function handleSingleSave() {
       const m = findAnggotaByInput(document.getElementById('inp-search').value);
@@ -1000,10 +1012,6 @@
       const tgl = document.getElementById('inp-tanggal').value || getToday();
       const pengabsen = document.getElementById('inp-pengabsen').value.trim() || '';
       const bahasa = document.querySelector('input[name="inp-bahasa"]:checked')?.value || 'Indonesian';
-      if (isDuplicateEntry(tgl, m.stambuk, bahasa)) {
-        showToast(`${m.nama} sudah tercatat (${bahasa}) tanggal ${tgl} — tidak dicatat dobel.`, 'yellow');
-        return;
-      }
       const ucapan = document.getElementById('inp-ucapan').value.trim();
       const btn = document.getElementById('btn-simpan');
       const btnLabel = btn ? btn.textContent : '';
@@ -1124,7 +1132,6 @@
       for (let i = 0; i < checked.length; i++) {
         const m = MASTER_ANGGOTA.find(a => a.id === checked[i]) || MASTER_ANGGOTA.find(a => a.stambuk === checked[i]);
         if (!m) continue;
-        if (isDuplicateEntry(tgl, m.stambuk, bahasa)) { skipped++; continue; }
         if (btn) btn.textContent = `MENYIMPAN ${i + 1}/${checked.length}...`;
         const rec = {
           id: 'L-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
@@ -1593,7 +1600,7 @@
         idx + 1,
         l.stambuk || MASTER_ANGGOTA.find(a => a.nama === l.nama)?.stambuk || '-',
         l.nama,
-        l.tgl,
+        String(l.tgl || l.timestamp || '').slice(0, 10),
         l.kelas,
         l.kamar,
         l.bahasa,
@@ -1882,7 +1889,7 @@
         downloadCSV(
           `Keuangan_LIS_26-27_${getToday()}.csv`,
           ['Tanggal', 'Nama', 'Kelas', 'Kamar', 'Indonesian', 'Javanese', 'Total_Denda', 'Status', 'Tgl_Lunas', 'Penerima'],
-          bills.map(b => [b.tgl, b.nama, b.kelas, b.kamar, b.indo, b.java, b.totalDenda, b.lunas ? 'LUNAS' : 'BELUM LUNAS', b.tgl_lunas || '-', b.penerima || '-'])
+          bills.map(b => [String(b.tgl || '').slice(0, 10), b.nama, b.kelas, b.kamar, b.indo, b.java, b.totalDenda, b.lunas ? 'LUNAS' : 'BELUM LUNAS', String(b.tgl_lunas || '').slice(0, 10) || '-', b.penerima || '-'])
         );
       });
 

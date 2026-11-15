@@ -5,7 +5,7 @@
  *   - Fill kuning (No/Date/Class/Room/Group) + merah (Name/Speaking)
  *   - Font header: Times New Roman 11 bold | Data: Calibri 12
  *   - Border tipis semua sel, merge B:C, G:H, I:J di tiap baris
- *   - Tinggi baris 23 (header) / 20 (data), format tanggal mm-dd-yy
+ *   - Tinggi baris 23 (header) / 20 (data), format tanggal dd-mm-yyyy (tanpa jam)
  * Zip ditulis manual (metode STORED + CRC32) — jadi jalan di browser & Node.
  */
 (function (global) {
@@ -124,10 +124,10 @@
   // ============================ STYLES ============================
   // Indeks style (s="..."):
   //   0 = default | 1 = header kuning center | 2 = header merah center
-  //   3 = data center border | 4 = data kiri border | 5 = tanggal center border (mm-dd-yy)
+  //   3 = data center border | 4 = data kiri border | 5 = tanggal center border (dd-mm-yyyy, tanpa jam)
   var STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    '<numFmts count="1"><numFmt numFmtId="164" formatCode="mm-dd-yy"/></numFmts>' +
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="dd-mm-yyyy"/></numFmts>' +
     '<fonts count="2">' +
     '<font><sz val="12"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>' +
     '<font><b/><sz val="11"/><color theme="1"/><name val="Times New Roman"/><family val="1"/></font>' +
