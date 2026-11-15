@@ -365,9 +365,21 @@
       const batch = pendingSync.slice(0, 50);
       try {
         await window.LISApi.saveBulk({ items: batch });
-        pendingSync = pendingSync.slice(batch.length);
+        // Server bisa menimpa kiriman ini kalau ada request lain yang membaca
+        // snapshot lama. Jadi antrian hanya dikosongkan untuk entri yang benar-benar
+        // sudah muncul di server; sisanya dikirim ulang (server menolak dobel lewat id).
+        let acked = null;
+        try {
+          const res = await window.LISApi.logs();
+          const list = Array.isArray(res) ? res : (res && res.data) || [];
+          acked = new Set(list.map(l => String(l.client_id || l.id_log || l.id || '')));
+        } catch (e) { acked = null; }
+        pendingSync = acked
+          ? pendingSync.filter(r => !acked.has(String(r.id || r.id_log || '')))
+          : pendingSync.slice(batch.length);
         savePending();
         setConnectionBadge('cloud');
+        if (pendingSync.length) scheduleFlush(8000);
         return true;
       } catch (e) {
         console.warn('[sync] gagal:', e.message);

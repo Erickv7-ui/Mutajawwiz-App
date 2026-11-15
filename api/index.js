@@ -155,12 +155,33 @@ async function readLogsFresh() { _logsReadAt = 0; return readAllLogsFast(); }
  * menghapus entri yang baru kita simpan. Setelah menulis, cek ulang: kalau ada
  * entri yang hilang, tulis lagi (maks 3 putaran).
  */
+function logIdOf(l) { return String((l && (l.client_id || l.id_log || l.id)) || ''); }
+
+function dedupeById(list) {
+  const seen = new Set();
+  const out = [];
+  for (const l of list || []) {
+    if (!l) continue;
+    const k = logIdOf(l) || ('H:' + JSON.stringify(l).slice(0, 120));
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(l);
+  }
+  return out;
+}
+
 async function writeLogsVerified(logs, mustExist, mustNotExist) {
+  // Simpan: gabungkan dulu dengan snapshot terbaru supaya entri yang baru ditulis
+  // instance lain tidak ikut terhapus oleh tulisan kita.
+  if ((mustExist || []).length && !(mustNotExist || []).length) {
+    try { logs = dedupeById((await readLogsFresh()).concat(logs)); } catch (e) {}
+  }
   await writeAllLogsFast(logs);
   const need = (mustExist || []).map(r => String(r.client_id || r.id_log || r.id || ''));
   const gone = (mustNotExist || []).map(String);
   if (!need.length && !gone.length) return;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, 300 * Math.pow(3, attempt - 1)));
     const check = await readLogsFresh();
     const haveIds = new Set(check.map(l => String(l.client_id || l.id_log || l.id || '')));
     const missing = (mustExist || []).filter(r => !haveIds.has(String(r.client_id || r.id_log || r.id || '')));
