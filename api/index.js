@@ -9,6 +9,10 @@ const PAY_PREFIX = 'pay/';
 const DB_ANGGOTA = 'db/anggota.json';
 const DB_LIS = 'db/lis.json';
 const LOGS_DB = 'db/logs.json';
+// Tulisan absensi disimpan sebagai file terpisah per batch (append-only).
+// Blob Vercel butuh 18-25 dtk untuk konsisten; read-modify-write pada satu file
+// membuat simpan berurutan saling menimpa (entri terakhir/pertama hilang).
+const ENTRY_PREFIX = 'db/entry/';
 const MIGRATED_FLAG = 'db/_migrated.json';
 const LEGACY_MERGE_FLAG = 'db/_legacy_merged.json';
 
@@ -155,43 +159,6 @@ async function readLogsFresh() { _logsReadAt = 0; return readAllLogsFast(); }
  * menghapus entri yang baru kita simpan. Setelah menulis, cek ulang: kalau ada
  * entri yang hilang, tulis lagi (maks 3 putaran).
  */
-function logIdOf(l) { return String((l && (l.client_id || l.id_log || l.id)) || ''); }
-
-function dedupeById(list) {
-  const seen = new Set();
-  const out = [];
-  for (const l of list || []) {
-    if (!l) continue;
-    const k = logIdOf(l) || ('H:' + JSON.stringify(l).slice(0, 120));
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(l);
-  }
-  return out;
-}
-
-async function writeLogsVerified(logs, mustExist, mustNotExist) {
-  // Simpan: gabungkan dulu dengan snapshot terbaru supaya entri yang baru ditulis
-  // instance lain tidak ikut terhapus oleh tulisan kita.
-  if ((mustExist || []).length && !(mustNotExist || []).length) {
-    try { logs = dedupeById((await readLogsFresh()).concat(logs)); } catch (e) {}
-  }
-  await writeAllLogsFast(logs);
-  const need = (mustExist || []).map(r => String(r.client_id || r.id_log || r.id || ''));
-  const gone = (mustNotExist || []).map(String);
-  if (!need.length && !gone.length) return;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    if (attempt) await new Promise(r => setTimeout(r, 300 * Math.pow(3, attempt - 1)));
-    const check = await readLogsFresh();
-    const haveIds = new Set(check.map(l => String(l.client_id || l.id_log || l.id || '')));
-    const missing = (mustExist || []).filter(r => !haveIds.has(String(r.client_id || r.id_log || r.id || '')));
-    const back = gone.length ? check.filter(l => gone.includes(String(l.client_id || l.id_log || l.id || ''))) : [];
-    if (!missing.length && !back.length) return;
-    const next = check.filter(l => !gone.includes(String(l.client_id || l.id_log || l.id || ''))).concat(missing);
-    await writeAllLogsFast(next);
-  }
-}
-async function readPaymentsFresh() { _payAt = 0; return readPayments(); }
 
 // Penanda hapus pembayaran: blob masih bisa menyajikan key lama 18-25 dtk, dan
 // union dengan RAM akan menghidupkan lagi key yang baru dihapus (unpay).
@@ -324,43 +291,100 @@ function unionLogs(base, extra) {
   return out;
 }
 
+/**
+ * Tulis absensi baru sebagai file sendiri (append-only, tanpa baca dulu).
+ * Karena tidak ada read-modify-write, dua simpan yang berbarengan tidak bisa
+ * saling menimpa walau blob masih menyajikan versi lama.
+ */
+async function appendLogEntries(items) {
+  const list = (items || []).filter((x) => x && x.nama);
+  if (!list.length) return;
+  const name = ENTRY_PREFIX + 'e-' + Date.now() + '-' + randomBytes(4).toString('hex') + '.json';
+  await writeJson(name, { items: list, at: Date.now() });
+}
+
+/** Hapus log = tulis penanda hapus (juga append-only). */
+async function appendLogDeletes(ids) {
+  const list = (ids || []).filter(Boolean).map(String);
+  if (!list.length) return;
+  const name = ENTRY_PREFIX + 'd-' + Date.now() + '-' + randomBytes(4).toString('hex') + '.json';
+  await writeJson(name, { del: list, at: Date.now() });
+}
+
+// id yang baru dihapus dari instance ini — jaga-jaga blob masih menyajikan versi lama
+const _logsDel = new Map();
+function markLogDeleted(id) { _logsDel.set(String(id), Date.now()); }
+function isLogDeleted(id) {
+  const at = _logsDel.get(String(id));
+  if (!at) return false;
+  if (Date.now() - at > 90000) { _logsDel.delete(String(id)); return false; }
+  return true;
+}
+
+/** Tulis snapshot penuh (dipakai dedupe / hapus semua) lalu buang file entry. */
+async function compactLogs(snapshot, files) {
+  await writeJson(LOGS_DB, snapshot);
+  for (const f of files || []) {
+    try { await del(f.pathname, { token: TOKEN }); } catch (e) {}
+  }
+}
+
 async function readAllLogsFast() {
   const now = Date.now();
   if (_logsReadAt && now - _logsReadAt < LOGS_MEM_TTL) {
     return _logsMem.data.slice();
   }
+
+  // 1) snapshot dasar
+  let merged = [];
   const saved = await readJsonOrNull(LOGS_DB);
   if (Array.isArray(saved)) {
-    const enriched = saved.map(enrichLog);
-    let clean = dedupeLogs(enriched);
-    if (clean.length !== saved.length && now - _lastDedupeAt > 3600000) {
-      _lastDedupeAt = now;
-      try { await writeJson(LOGS_DB, clean); } catch (e) { console.warn('auto-dedupe simpan gagal:', e.message); }
-    }
-    // gabung dengan tulisan terbaru dari instance ini (blob mungkin belum sinkron)
-    if (_logsMem.at && now - _logsMem.at < LOGS_MEM_FRESH) {
-      clean = unionLogs(clean, _logsMem.data);
-    }
-    // at:0 = RAM ini hasil BACA, bukan hasil TULIS → jangan dipakai untuk union
-    _logsMem = { at: 0, data: clean };
-    _logsReadAt = now;
-    // Log lama (blob logs/YYYY-MM-DD/*) yang belum ikut migrasi tetap diselamatkan.
-    clean = await mergeLegacyStep(clean);
-    return clean;
+    merged = dedupeLogs(saved.map(enrichLog));
+  } else if (!(await isMigrated())) {
+    // migrasi sekali dari struktur lama logs/YYYY-MM-DD/*.json
+    try {
+      const legacy = await readMany(await listAllLogs());
+      if (legacy.length) {
+        try { await writeJson(LOGS_DB, legacy); } catch (e) { console.warn('migrasi logs gagal simpan:', e.message); }
+      }
+      await markMigrated();
+      merged = legacy.map(enrichLog);
+    } catch { merged = []; }
   }
-  // migrasi sekali dari struktur lama logs/YYYY-MM-DD/*.json
-  if (await isMigrated()) return [];
+
+  // 2) tambahkan file entry (simpan/hapus terbaru)
+  let files = [];
   try {
-    const blobs = await listAllLogs();
-    const legacy = await readMany(blobs);
-    if (legacy.length) {
-      try { await writeJson(LOGS_DB, legacy); } catch (e) { console.warn('migrasi logs gagal simpan:', e.message); }
+    files = await listAll(ENTRY_PREFIX);
+    if (files.length) {
+      const payloads = await readMany(files);
+      const added = [];
+      const deleted = new Set();
+      for (const p of payloads) {
+        if (!p) continue;
+        if (Array.isArray(p)) added.push(...p);
+        else if (Array.isArray(p.items)) added.push(...p.items);
+        if (Array.isArray(p.del)) p.del.forEach((id) => deleted.add(String(id)));
+      }
+      merged = dedupeLogs(merged.concat(added.map(enrichLog)));
+      if (deleted.size) merged = merged.filter((l) => !deleted.has(String(l.id_log || l.id || '')));
     }
-    await markMigrated();
-    return legacy;
-  } catch {
-    return [];
+  } catch (e) { console.warn('baca file entry gagal:', e.message); }
+
+  // 3) buang yang baru dihapus dari instance ini (blob bisa masih versi lama)
+  merged = merged.filter((l) => !isLogDeleted(l.id_log || l.id || ''));
+
+  _logsMem = { at: 0, data: merged };
+  _logsReadAt = now;
+
+  // 4) log lama yang belum ikut migrasi tetap diselamatkan
+  merged = await mergeLegacyStep(merged);
+
+  // 5) rapikan kalau file entry sudah menumpuk
+  if (files.length > 40) {
+    compactLogs(merged, files).catch((e) => console.warn('compact logs gagal:', e.message));
   }
+  return merged;
 }
 
 /** Status merge log lama: { done, cursor } */
@@ -409,7 +433,10 @@ async function mergeLegacyStep(base) {
 }
 
 async function writeAllLogsFast(logs) {
-  await writeJson(LOGS_DB, logs);
+  // Snapshot penuh (dipakai dedupe & hapus semua): tulis dasar, lalu buang file entry.
+  let files = [];
+  try { files = await listAll(ENTRY_PREFIX); } catch (e) {}
+  await compactLogs(logs || [], files);
   // write-through: instance ini langsung melihat datanya sendiri
   _logsMem = { at: Date.now(), data: (logs || []).slice() };
   _logsReadAt = Date.now();
@@ -617,7 +644,9 @@ module.exports = async (req, res) => {
             : false;
           if (!dup) { allLogs.push(rec); added.push(rec); }
         }
-        await writeLogsVerified(allLogs, added, []);
+        await appendLogEntries(added);
+        _logsMem = { at: Date.now(), data: dedupeLogs((_logsMem.data || []).concat(added)) };
+        _logsReadAt = Date.now();
         return send(res, 200, { ok: true, count: added.length, skipped: items.length - added.length });
         });
       } catch (err) {
@@ -659,8 +688,9 @@ module.exports = async (req, res) => {
         if (dup) {
           return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date, skipped: true });
         }
-        allLogs.push(rec);
-        await writeLogsVerified(allLogs, [rec], []);
+        await appendLogEntries([rec]);
+        _logsMem = { at: Date.now(), data: dedupeLogs((_logsMem.data || []).concat([rec])) };
+        _logsReadAt = Date.now();
         return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date });
         });
       } catch (err) {
@@ -861,7 +891,10 @@ module.exports = async (req, res) => {
         const allLogs = await readLogsFresh();
         const removed = allLogs.filter((l) => (l.id_log || l.id) !== id);
         if (removed.length === allLogs.length) return send(res, 404, { ok: false, error: 'Log tidak ditemukan' });
-        await writeLogsVerified(removed, [], [id]);
+        await appendLogDeletes([id]);
+        markLogDeleted(id);
+        _logsMem = { at: Date.now(), data: removed };
+        _logsReadAt = Date.now();
         return send(res, 200, { ok: true, deleted: allLogs.length - removed.length });
         });
       } catch (err) {
@@ -945,9 +978,17 @@ module.exports = async (req, res) => {
         _lastDedupeAt = 0;
         _payMem = null;
         _payAt = 0;
-        // 1) Kosongkan store baru (satu blob) — INI yang dipakai sekarang
+        _logsDel.clear();
+        // 1) Kosongkan store baru (satu blob) + buang file entry append-only
         let cleared = 0;
         try { await writeJson(LOGS_DB, []); cleared++; } catch (e) { console.warn('clear logs:', e.message); }
+        try {
+          const entryFiles = await listAll(ENTRY_PREFIX);
+          if (entryFiles.length) {
+            await del(entryFiles.map((b) => b.pathname), { token: TOKEN });
+            cleared += entryFiles.length;
+          }
+        } catch (e) { console.warn('clear entry:', e.message); }
         try { await writeJson('db/pay.json', {}); cleared++; } catch (e) { console.warn('clear pay:', e.message); }
         // 2) Hapus sisa blob lama (logs/YYYY-MM-DD/*, pay/*) — skip kalau sudah migrated
         let deleted = 0;
