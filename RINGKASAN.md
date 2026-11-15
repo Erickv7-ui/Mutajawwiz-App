@@ -378,3 +378,21 @@ device itu dan belum masuk server.
   (b) simpan 1 lalu tunggu 37 detik → server naik 1 tanpa disentuh;
   (c) simpan 1 lalu pindah menu → server naik 1 dalam 4 detik. 0 error konsol.
 - Kuota: tetap 1 put per kirim (Advanced), hanya lebih cepat, bukan lebih sering.
+#### v42 — absen dobel boleh, tanggal ekspor tanpa jam (PR #49)
+- **Absen dobel sekarang boleh.** Orang sama, tanggal sama, bahasa sama bisa dicatat
+  berkali-kali (dua pelanggaran berbeda di hari yang sama). Toast peringatan
+  "sudah tercatat — tidak dicatat dobel" dihapus, termasuk di absen massal.
+- Pengaman yang tersisa hanya untuk **kiriman ulang jaringan**: klien mengirim `id`
+  per entri, server menyimpannya sebagai `client_id` dan menolak entri dengan
+  `client_id` yang sudah ada. Jadi retry tidak menggandakan, tapi klik baru tetap
+  tercatat walau isinya sama persis.
+- Penggabungan cloud + lokal sekarang **ala multiset**: jumlah entri per kunci
+  diambil yang terbesar antara cloud dan lokal. Entri kembar yang disengaja tetap
+  utuh, entri baru yang belum muncul di cloud tetap tampil, duplikat lama tetap 1.
+- **Tanggal ekspor date-only**: XLSX memakai format `dd-mm-yyyy` tanpa jam, CSV
+  rekap & tagihan memotong tanggal jadi `YYYY-MM-DD` (10 karakter). Kolom jam
+  terpisah (kalau ada) tidak diubah.
+- Hasil uji live: 3 entri identik (orang+tanggal+bahasa sama) tersimpan 3, server
+  naik 3, setelah reload lokal 46 = server 46, antrian 0. XLSX live: `formatCode="dd-mm-yyyy"`,
+  tidak ada token jam. Data uji sudah dihapus (`deleteLog`), sisa 41 entri asli.
+
