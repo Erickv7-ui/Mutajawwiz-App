@@ -144,9 +144,18 @@ async function writePayments(map) {
  * Store log cepat: satu blob db/logs.json (bukan ratusan blob per hari).
  * Migrasi otomatis dari blob lama kalau db/logs.json belum ada.
  */
+/**
+ * Kunci identitas entri. Dulu berbasis isi (tanggal+nama+bahasa+ucapan+kamar+pengabsen),
+ * akibatnya absen dobel yang DISENGAJA (orang sama, hari sama) ikut dibuang dan
+ * pengabsen yang diisi server ("Admin") membuat entri sama dianggap beda.
+ * Sekarang identitas = id entri; isi hanya dipakai kalau entri benar-benar tanpa id.
+ */
 function logContentKey(l) {
-  return [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
-    (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
+  if (!l) return '';
+  const id = l.client_id || l.id_log || l.id;
+  if (id) return 'ID:' + String(id);
+  return ['c', l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
+    (l.ucapan || 'None').toLowerCase()].join('|');
 }
 
 /** Buang duplikat konten, simpan yang paling awal */
@@ -489,7 +498,13 @@ module.exports = async (req, res) => {
             bahasa: bodyItem.bahasa || 'Indonesian',
             ucapan: bodyItem.ucapan || 'None',
           };
-          const dup = allLogs.some(l => logContentKey(l) === logContentKey(rec));
+          // Anti-dobel hanya untuk kiriman ulang batch yang sama (id dari klien).
+          // Absen dobel yang disengaja punya id berbeda → tetap dicatat.
+          const cid = String(bodyItem.id || bodyItem.client_id || '');
+          if (cid) rec.client_id = cid;
+          const dup = cid
+            ? allLogs.some(l => String(l.client_id || '') === cid)
+            : false;
           if (!dup) { allLogs.push(rec); added.push(rec); }
         }
         await writeAllLogsFast(allLogs);
@@ -526,7 +541,9 @@ module.exports = async (req, res) => {
       try {
         // Simpan ke store cepat (satu blob) — cek duplikat dulu
         const allLogs = await readAllLogsFast();
-        const dup = allLogs.some(l => logContentKey(l) === logContentKey(rec));
+        const cid = String(body.id || body.client_id || '');
+        if (cid) rec.client_id = cid;
+        const dup = cid ? allLogs.some(l => String(l.client_id || '') === cid) : false;
         if (dup) {
           return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date, skipped: true });
         }
