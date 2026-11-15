@@ -396,7 +396,10 @@ device itu dan belum masuk server.
   dari cache setelah data dikosongkan.
 - **Filter per tanggal di menu Tagihan**: dropdown `#tag-tgl-filter` otomatis diisi
   tanggal yang ada (terbaru di atas) dan bisa digabung dengan filter status/rayon/cari.
-  Tombol Reset Filter ikut mengosongkannya.
+  Tombol Reset Filter ikut mengosongkannya. v45: dropdown diberi listener `change`
+  sendiri — sebelumnya memilih tanggal tidak langsung menyaring (harus geser filter
+  lain dulu). Uji live: pilih 2026-11-14 -> 101 baris jadi 3 baris tanggal itu saja,
+  kosongkan -> balik 101.
 - **Ekspor XLSX/CSV urut kelas tertinggi**: `sortByKelas()` mengurutkan kelas 3 → 2 → 1
   (angka maupun romawi), lalu nama A-Z, lalu jam catat.
 - Hasil uji live v44: 5 toggle berurutan tanpa jeda → 5/5 hidden bertahan; bulk hide
