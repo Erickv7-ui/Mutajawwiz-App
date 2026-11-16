@@ -378,6 +378,33 @@ device itu dan belum masuk server.
   (b) simpan 1 lalu tunggu 37 detik → server naik 1 tanpa disentuh;
   (c) simpan 1 lalu pindah menu → server naik 1 dalam 4 detik. 0 error konsol.
 - Kuota: tetap 1 put per kirim (Advanced), hanya lebih cepat, bukan lebih sering.
+#### v51 — backend pindah ke Cloudflare D1, lepas Vercel tanpa kartu (PR #69-#71)
+- **Kenapa**: Cloud Run / Firebase Functions butuh kartu debit. Cloudflare Pages +
+  Functions + D1 semuanya gratis tanpa kartu, tanpa billing, tanpa file kunci JSON.
+- **Store baru** `lib/store-d1.js`: tabel `logs` (1 baris per entri, JSON utuh di
+  kolom `data`), `pay` (kunci `tgl__stambuk`), `meta` (master anggota/pengurus).
+  Tulis pakai `batch` 100 baris; `INSERT OR REPLACE` jadi idempoten.
+- **Driver otomatis**: binding `env.DB` ada → `d1`; `DB_DRIVER=firestore` →
+  Firestore; selain itu Blob lama. `api/index.js` tetap satu-satunya backend.
+- **Adapter Cloudflare** `functions/api/[[path]].js` menjembatani Request/Response
+  ke gaya Node (req,res), jadi kode yang sama jalan di Vercel, `server.js`, dan Worker.
+- `@vercel/blob` dimuat lewat `module.require` supaya tidak ikut di-bundle ke Worker.
+  (Catatan: `eval('require')` gagal di scope CJS dan sempat bikin logs terbaca 0.)
+- Aksi baru: `dump` (salinan mentah logs+pay+master) dan `migrate_d1` (Server Pass).
+  Skrip `scripts/migrate-to-d1.js` memindahkan semua data lama dan memverifikasi jumlah.
+- Uji lokal `wrangler pages dev` + D1 lokal: master 724, migrasi 121 log + 62 tagihan +
+  724 anggota + 28 pengurus, `verified: true`, 53 status lunas ikut; save, save_bulk
+  8 paralel (8/8 masuk), pay/unpay, hidden_bulk, deleteLog, dedupe, export 122 — semua 200.
+  `logs` 21 ms, `bootstrap` 55 ms.
+- **Bug lama ketemu**: `readPaymentsFresh` hilang waktu refactor v48, jadi pay/unpay/
+  toggle_hidden/hidden_bulk balas 500 sejak v48. Dipulihkan di PR #71 — sudah live.
+
+#### v50 — backend Firestore + server mandiri (PR #66-#68)
+- `lib/firestore.js` (REST + JWT RS256, tanpa dependency), `DB_DRIVER=firestore`,
+  `action=migrate_firestore`, `server.js` + `Dockerfile`, `firebase.json` +
+  `scripts/build-static.js`, `MIGRASI-GOOGLE-CLOUD.md`.
+- Tidak diaktifkan di produksi: Cloud Run/Firebase Functions butuh billing berkartu.
+
 #### v49 — web lega lagi: baca blob tidak berlipat (PR #65)
 - **Kenapa v48 terasa berat**: tiap simpan memanggil `readLogsFresh()` (baca paksa
   dari blob = 1 list `db/entry/` + baca SEMUA file entry), dan tiap flush klien
