@@ -15,6 +15,26 @@ Browser → Cloudflare Pages (index.html, css, js)
 `api/index.js` tetap satu-satunya backend. Driver database dipilih otomatis:
 binding `env.DB` ada → `d1`; `DB_DRIVER=firestore` → Firestore; selain itu → Blob lama.
 
+## Status deploy (17 November 2026)
+
+Sudah jalan:
+
+- Akun Cloudflare: `Exprabout18@gmail.com's Account` (id `52db208f...`).
+- D1 `mutajawwiz`, id `8ea51d8e-c5db-4542-8428-7fbcc9ba5a2b`, region APAC/SIN.
+- Pages project `mutajawwiz` → **https://mutajawwiz.pages.dev** (production `main`).
+- Secret `ADMIN_PASSWORD` dan `ADMIN_PIN` sudah dipasang (production).
+- Data dimigrasi dan diverifikasi: 121 log, 62 tagihan, 724 anggota, 28 pengurus,
+  53 status lunas. `GET /api?action=logs` = 121.
+- Uji di produksi: save, save_bulk 8 paralel (8/8 masuk), pay/unpay, hidden_bulk,
+  deleteLog, export — semua 200. `logs` ~130 ms, `bootstrap` ~240 ms (colo SIN).
+- Custom domain `www.experimentlynss.my.id` sudah ditambahkan ke project, status
+  `initializing` — menunggu nameserver domain pindah ke Cloudflare.
+
+Belum: pindah nameserver di cloudhost.id. Domain tidak punya record MX/TXT, jadi
+tidak ada email yang perlu dibuat ulang di Cloudflare. Record yang perlu ada:
+`www` (CNAME ke `mutajawwiz.pages.dev`, proxy aktif) dan apex
+`experimentlynss.my.id` (lewat custom domain Pages).
+
 ## 1. Akun & alat
 
 1. Daftar di https://dash.cloudflare.com/sign-up (email saja, tanpa kartu).

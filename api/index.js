@@ -289,11 +289,15 @@ async function readPaymentsD1() {
 /** Baca status bayar tanpa cache RAM (dipakai aksi pay/unpay: butuh kondisi terbaru). */
 async function readPaymentsFresh() { _payAt = 0; return await readPayments(); }
 
-/** Pintu baca status bayar: D1 / Firestore / Blob. */
+/** Pintu baca status bayar: D1 / Firestore / Blob.
+ *  Selalu balikin salinan: pemanggil (pay/unpay) boleh mengubah map tanpa merusak
+ *  cache RAM, supaya writePayments bisa mendeteksi perubahan (diff) dan menulis. */
 async function readPayments() {
-  if (useD1()) return await readPaymentsD1();
-  if (useFS()) return await readPaymentsFS();
-  return await readPaymentsBlob();
+  let map;
+  if (useD1()) map = await readPaymentsD1();
+  else if (useFS()) map = await readPaymentsFS();
+  else map = await readPaymentsBlob();
+  return Object.assign({}, map || {});
 }
 
 /** Gabungkan log dengan status bayar (tidak ada record = belum lunas) */
