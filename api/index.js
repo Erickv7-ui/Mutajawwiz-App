@@ -1,5 +1,23 @@
-const { put, list, get, del } = require('@vercel/blob');
 const { randomBytes } = require('crypto');
+
+// Paket Vercel Blob dimuat malas: di Cloudflare (D1) paket ini tidak boleh ikut
+// di-bundle. `eval('require')` membuat bundler tidak bisa menganalisis nama paket.
+let _blobLib = null;
+function blobs() {
+  if (_blobLib) return _blobLib;
+  try {
+    const req = (0, eval)('require');
+    _blobLib = req('@vercel/blob');
+  } catch (e) {
+    _blobLib = {};
+    console.warn('@vercel/blob tidak tersedia:', e.message);
+  }
+  return _blobLib;
+}
+const put = (...a) => blobs().put(...a);
+const list = (...a) => blobs().list(...a);
+const get = (...a) => blobs().get(...a);
+const del = (...a) => blobs().del(...a);
 const SEED_ANGGOTA = require('../data/master.json');
 const SEED_LIS = require('../data/lis.json');
 
@@ -18,10 +36,33 @@ const ENTRY_PREFIX = 'db/entry/';
 // DB_DRIVER=firestore + GOOGLE_SA_JSON -> semua data (log, status bayar, master)
 // disimpan di Google Cloud Firestore, Blob cuma jadi cadangan/migrasi.
 const fsdb = require('../lib/firestore');
-const DB_DRIVER = String(process.env.DB_DRIVER || 'blob').toLowerCase();
-const useFS = DB_DRIVER === 'firestore' && fsdb.ready();
+const d1db = require('../lib/store-d1');
+
+// Runtime bisa diganti per request (Cloudflare Pages Functions memberi env lewat
+// parameter). Di Vercel/Node, env sudah ada di process.env sejak awal.
+const _rt = {
+  driver: String(process.env.DB_DRIVER || 'blob').toLowerCase(),
+  d1: null,
+  token: process.env.BLOB_READ_WRITE_TOKEN || '',
+};
+
+/** Dipanggil adapter (Cloudflare) sebelum handler jalan. */
+function configure(env) {
+  if (!env) return;
+  if (env.DB) { _rt.d1 = env.DB; if (!process.env.DB_DRIVER) _rt.driver = 'd1'; }
+  if (env.DB_DRIVER) _rt.driver = String(env.DB_DRIVER).toLowerCase();
+  if (env.BLOB_READ_WRITE_TOKEN) _rt.token = env.BLOB_READ_WRITE_TOKEN;
+}
+
+function driverName() {
+  if (_rt.driver === 'd1' && _rt.d1) return 'd1';
+  if (_rt.driver === 'firestore' && fsdb.ready()) return 'firestore';
+  return 'blob';
+}
+function useFS() { return driverName() === 'firestore'; }
+function useD1() { return driverName() === 'd1'; }
 // versi kode server — dipakai untuk memastikan deploy sudah jalan
-const SERVER_VERSION = 'v50';
+const SERVER_VERSION = 'v51';
 const MIGRATED_FLAG = 'db/_migrated.json';
 const LEGACY_MERGE_FLAG = 'db/_legacy_merged.json';
 
@@ -234,9 +275,20 @@ async function readPaymentsFS() {
   return merged;
 }
 
-/** Pintu baca status bayar: Firestore / Blob. */
+/** Baca status bayar dari D1: 1 query. */
+async function readPaymentsD1() {
+  if (_payMem && (Date.now() - _payAt) < PAY_MEM_FRESH) return _payMem;
+  const map = await d1db.listPay(_rt.d1);
+  const merged = _payMem ? payUnion(map, _payMem) : map;
+  _payMem = merged;
+  _payAt = Date.now();
+  return merged;
+}
+
+/** Pintu baca status bayar: D1 / Firestore / Blob. */
 async function readPayments() {
-  if (useFS) return await readPaymentsFS();
+  if (useD1()) return await readPaymentsD1();
+  if (useFS()) return await readPaymentsFS();
   return await readPaymentsBlob();
 }
 
@@ -248,7 +300,21 @@ async function writePayments(map) {
   const prev = _payMem || {};
   _payMem = Object.assign({}, map);
   _payAt = Date.now();
-  if (useFS) {
+  if (useD1()) {
+    // Hemat: cuma tulis yang berubah, hapus yang dibuang.
+    const changed = [];
+    Object.keys(map).forEach((k) => {
+      if (JSON.stringify(map[k] || null) !== JSON.stringify(prev[k] || null)) {
+        const p = map[k];
+        if (p && p.tgl && p.stambuk) changed.push(p);
+      }
+    });
+    const removed = Object.keys(prev).filter((k) => !(k in map));
+    if (changed.length) await d1db.upsertPay(_rt.d1, changed);
+    if (removed.length) await d1db.deletePay(_rt.d1, removed);
+    return;
+  }
+  if (useFS()) {
     // Hemat: hanya tulis dokumen yang benar-benar berubah, hapus yang dibuang.
     const changed = [];
     Object.keys(map).forEach((k) => {
@@ -348,7 +414,12 @@ function unionLogs(base, extra) {
 async function appendLogEntries(items) {
   const list = (items || []).filter((x) => x && x.nama);
   if (!list.length) return;
-  if (useFS) {
+  if (useD1()) {
+    // D1: INSERT OR REPLACE per entri, 1 batch. Tanpa baca dulu.
+    await d1db.upsertLogs(_rt.d1, list);
+    return;
+  }
+  if (useFS()) {
     // Firestore: 1 dokumen per entri, tanpa baca dulu.
     await fsdb.setDocs('logs', list, (l) => l.id_log || l.id);
     return;
@@ -361,7 +432,11 @@ async function appendLogEntries(items) {
 async function appendLogDeletes(ids) {
   const list = (ids || []).filter(Boolean).map(String);
   if (!list.length) return;
-  if (useFS) {
+  if (useD1()) {
+    await d1db.deleteLogs(_rt.d1, list);
+    return;
+  }
+  if (useFS()) {
     await fsdb.deleteDocs('logs', list);
     return;
   }
@@ -467,11 +542,23 @@ async function readAllLogsFS() {
   return merged;
 }
 
-/** Pintu baca log: RAM -> Firestore / Blob. */
+/** Baca semua log dari D1: 1 query berhalaman (1000/baris), bukan N blob. */
+async function readAllLogsD1() {
+  const now = Date.now();
+  const rows = await d1db.listLogs(_rt.d1);
+  let merged = dedupeLogs(rows.map((r) => enrichLog(r)).filter((l) => l && l.nama));
+  merged = merged.filter((l) => !isLogDeleted(l.id_log || l.id || ''));
+  _logsMem = { at: 0, data: merged };
+  _logsReadAt = now;
+  return merged;
+}
+
+/** Pintu baca log: RAM -> D1 / Firestore / Blob. */
 async function readAllLogsFast() {
   const now = Date.now();
   if (_logsReadAt && now - _logsReadAt < LOGS_MEM_TTL) return _logsMem.data.slice();
-  if (useFS) return await readAllLogsFS();
+  if (useD1()) return await readAllLogsD1();
+  if (useFS()) return await readAllLogsFS();
   return await readAllLogsBlob();
 }
 
@@ -521,7 +608,13 @@ async function mergeLegacyStep(base) {
 }
 
 async function writeAllLogsFast(logs) {
-  if (useFS) {
+  if (useD1()) {
+    await d1db.replaceLogs(_rt.d1, logs || []);
+    _logsMem = { at: Date.now(), data: (logs || []).slice() };
+    _logsReadAt = Date.now();
+    return;
+  }
+  if (useFS()) {
     await fsdb.replaceAll('logs', logs || [], (l) => l.id_log || l.id);
     _logsMem = { at: Date.now(), data: (logs || []).slice() };
     _logsReadAt = Date.now();
@@ -556,7 +649,14 @@ function mergePayments(logs, payMap) {
 async function loadTable(table) {
   const path = table === 'lis' ? DB_LIS : DB_ANGGOTA;
   const seed = table === 'lis' ? SEED_LIS : SEED_ANGGOTA;
-  if (useFS) {
+  if (useD1()) {
+    try {
+      const doc = await d1db.getMeta(_rt.d1, table);
+      if (doc && Array.isArray(doc.items) && doc.items.length) return doc.items;
+    } catch (e) { console.warn('meta d1:', e.message); }
+    return seed;
+  }
+  if (useFS()) {
     try {
       const doc = await fsdb.getDoc('meta', table);
       if (doc && Array.isArray(doc.items) && doc.items.length) return doc.items;
@@ -569,7 +669,11 @@ async function loadTable(table) {
 
 /** Simpan tabel master: Firestore (kalau aktif) + Blob sebagai cadangan. */
 async function saveTable(table, rows) {
-  if (useFS) {
+  if (useD1()) {
+    await d1db.setMeta(_rt.d1, table, { id: table, items: rows, at: Date.now() });
+    return;
+  }
+  if (useFS()) {
     try { await fsdb.setDocs('meta', [{ id: table, items: rows, at: Date.now() }], (d) => d.id); }
     catch (e) { console.warn('simpan meta firestore:', e.message); }
   }
@@ -592,7 +696,7 @@ async function readMany(blobs) {
   return out;
 }
 
-module.exports = async (req, res) => {
+const handler = async (req, res) => {
   if (req.method === 'OPTIONS') {
     return send(res, 204, {});
   }
@@ -629,7 +733,7 @@ module.exports = async (req, res) => {
     if (!action || action === 'ping') {
       return send(res, 200, {
         ok: true, mode: 'vercel', version: SERVER_VERSION,
-        driver: useFS ? 'firestore' : 'blob',
+        driver: driverName(),
         dbReady: fsdb.ready(), ts: nowWIB(),
       });
     }
@@ -1126,6 +1230,61 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Salinan mentah semua data (tanpa gabung status bayar) — dipakai skrip
+    // migrasi ke D1 / cadangan manual.
+    if (action === 'dump') {
+      if (!isAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah' });
+      }
+      try {
+        const logs = await readAllLogsFast();
+        const payMap = await readPayments();
+        const anggota = await loadTable('anggota');
+        const lis = await loadTable('lis');
+        return send(res, 200, {
+          ok: true, at: new Date().toISOString(), driver: driverName(),
+          logs, pay: payMap, anggota, lis,
+        });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Dump gagal: ' + err.message });
+      }
+    }
+
+    // Terima salinan data (dari `dump`) dan tulis ke D1. Wajib Server Pass.
+    if (action === 'migrate_d1') {
+      if (!isStrictAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah (migrasi wajib Server Pass)' });
+      }
+      if (!useD1()) {
+        return send(res, 400, { ok: false, error: 'Binding D1 tidak ada di runtime ini' });
+      }
+      try {
+        const logs = Array.isArray(body.logs) ? body.logs : [];
+        const payMap = body.pay && typeof body.pay === 'object' ? body.pay : {};
+        const payDocs = Object.keys(payMap).map((k) => payMap[k]).filter((p) => p && p.tgl && p.stambuk);
+        const nLogs = await d1db.replaceLogs(_rt.d1, logs);
+        const nPay = await d1db.replacePay(_rt.d1, payDocs);
+        if (Array.isArray(body.anggota) && body.anggota.length) {
+          await d1db.setMeta(_rt.d1, 'anggota', { id: 'anggota', items: body.anggota, at: Date.now() });
+        }
+        if (Array.isArray(body.lis) && body.lis.length) {
+          await d1db.setMeta(_rt.d1, 'lis', { id: 'lis', items: body.lis, at: Date.now() });
+        }
+        _logsMem = { at: 0, data: [] };
+        _logsReadAt = 0;
+        _payMem = null;
+        _payAt = 0;
+        const check = await d1db.listLogs(_rt.d1);
+        return send(res, 200, {
+          ok: true, logs: nLogs, pay: nPay,
+          anggota: (body.anggota || []).length, lis: (body.lis || []).length,
+          d1Count: check.length, verified: check.length === logs.length,
+        });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Migrasi D1 gagal: ' + err.message });
+      }
+    }
+
     if (action === 'clearall') {
       if (!isStrictAdmin(body.password)) {
         return send(res, 401, { ok: false, error: 'Password admin salah (Hapus Semua Data wajib Server Pass)' });
@@ -1139,7 +1298,12 @@ module.exports = async (req, res) => {
         _payMem = null;
         _payAt = 0;
         _logsDel.clear();
-        if (useFS) {
+        if (useD1()) {
+          let cleared = 0;
+          try { cleared += await d1db.clearAll(_rt.d1); } catch (e) { console.warn('clear d1:', e.message); }
+          return send(res, 200, { ok: true, mode: 'd1', cleared, deleted: 0 });
+        }
+        if (useFS()) {
           // Firestore aktif: kosongkan dokumen log + status bayar, Blob cuma cadangan.
           let clearedFS = 0;
           try { clearedFS += await fsdb.clearCollection('logs'); } catch (e) { console.warn('clear fs logs:', e.message); }
@@ -1183,3 +1347,8 @@ module.exports = async (req, res) => {
 
   return send(res, 405, { ok: false, error: 'Method tidak didukung' });
 };
+
+module.exports = handler;
+module.exports.handler = handler;
+module.exports.configure = configure;
+module.exports.driverName = driverName;
