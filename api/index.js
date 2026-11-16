@@ -13,8 +13,15 @@ const LOGS_DB = 'db/logs.json';
 // Blob Vercel butuh 18-25 dtk untuk konsisten; read-modify-write pada satu file
 // membuat simpan berurutan saling menimpa (entri terakhir/pertama hilang).
 const ENTRY_PREFIX = 'db/entry/';
+
+// ---------- pilihan backend database ----------
+// DB_DRIVER=firestore + GOOGLE_SA_JSON -> semua data (log, status bayar, master)
+// disimpan di Google Cloud Firestore, Blob cuma jadi cadangan/migrasi.
+const fsdb = require('../lib/firestore');
+const DB_DRIVER = String(process.env.DB_DRIVER || 'blob').toLowerCase();
+const useFS = DB_DRIVER === 'firestore' && fsdb.ready();
 // versi kode server — dipakai untuk memastikan deploy sudah jalan
-const SERVER_VERSION = 'v48';
+const SERVER_VERSION = 'v50';
 const MIGRATED_FLAG = 'db/_migrated.json';
 const LEGACY_MERGE_FLAG = 'db/_legacy_merged.json';
 
@@ -48,7 +55,9 @@ function send(res, status, obj) {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
   }
-  res.status(status).end(JSON.stringify(obj));
+  // Portabel: jalan di Vercel maupun server Node biasa (Cloud Run/VPS).
+  res.statusCode = status;
+  res.end(JSON.stringify(obj));
 }
 
 function nowWIB() {
@@ -186,7 +195,8 @@ function payUnion(base, extra) {
 }
 
 /** Semua status pembayaran: key = `${tgl}__${stambuk}` */
-async function readPayments() {
+/** Baca status bayar dari Blob (jalur lama). */
+async function readPaymentsBlob() {
   if (_payMem && (Date.now() - _payAt) < PAY_MEM_FRESH) return _payMem;
   try {
     const saved = await readJsonOrNull('db/pay.json');
@@ -208,13 +218,50 @@ async function readPayments() {
   } catch { return {}; }
 }
 
+/** Baca status bayar dari Firestore (1 query berhalaman). */
+async function readPaymentsFS() {
+  if (_payMem && (Date.now() - _payAt) < PAY_MEM_FRESH) return _payMem;
+  const docs = await fsdb.listAll('pay');
+  const map = {};
+  docs.forEach((d) => {
+    const p = d.data || {};
+    const key = p.tgl && p.stambuk ? `${p.tgl}__${p.stambuk}` : d.id;
+    map[key] = p;
+  });
+  const merged = _payMem ? payUnion(map, _payMem) : map;
+  _payMem = merged;
+  _payAt = Date.now();
+  return merged;
+}
+
+/** Pintu baca status bayar: Firestore / Blob. */
+async function readPayments() {
+  if (useFS) return await readPaymentsFS();
+  return await readPaymentsBlob();
+}
+
 /** Gabungkan log dengan status bayar (tidak ada record = belum lunas) */
 async function writePayments(map) {
   // write-through: RAM dulu supaya request berikutnya tidak membaca blob basi.
   // Sengaja TIDAK membaca blob lagi di sini: unpay menghapus key, dan penggabungan
   // akan menghidupkan kembali key yang baru dihapus.
+  const prev = _payMem || {};
   _payMem = Object.assign({}, map);
   _payAt = Date.now();
+  if (useFS) {
+    // Hemat: hanya tulis dokumen yang benar-benar berubah, hapus yang dibuang.
+    const changed = [];
+    Object.keys(map).forEach((k) => {
+      if (JSON.stringify(map[k] || null) !== JSON.stringify(prev[k] || null)) {
+        const p = map[k];
+        if (p && p.tgl && p.stambuk) changed.push(p);
+      }
+    });
+    const removed = Object.keys(prev).filter((k) => !(k in map));
+    if (changed.length) await fsdb.setDocs('pay', changed, (p) => `${p.tgl}__${p.stambuk}`);
+    if (removed.length) await fsdb.deleteDocs('pay', removed);
+    return;
+  }
   await writeJson('db/pay.json', map);
 }
 
@@ -301,6 +348,11 @@ function unionLogs(base, extra) {
 async function appendLogEntries(items) {
   const list = (items || []).filter((x) => x && x.nama);
   if (!list.length) return;
+  if (useFS) {
+    // Firestore: 1 dokumen per entri, tanpa baca dulu.
+    await fsdb.setDocs('logs', list, (l) => l.id_log || l.id);
+    return;
+  }
   const name = ENTRY_PREFIX + 'e-' + Date.now() + '-' + randomBytes(4).toString('hex') + '.json';
   await writeJson(name, { items: list, at: Date.now() });
 }
@@ -309,6 +361,10 @@ async function appendLogEntries(items) {
 async function appendLogDeletes(ids) {
   const list = (ids || []).filter(Boolean).map(String);
   if (!list.length) return;
+  if (useFS) {
+    await fsdb.deleteDocs('logs', list);
+    return;
+  }
   const name = ENTRY_PREFIX + 'd-' + Date.now() + '-' + randomBytes(4).toString('hex') + '.json';
   await writeJson(name, { del: list, at: Date.now() });
 }
@@ -333,7 +389,8 @@ async function compactLogs(snapshot, files) {
   }
 }
 
-async function readAllLogsFast() {
+/** Baca semua log dari Blob (jalur lama: snapshot + file entry append-only). */
+async function readAllLogsBlob() {
   const now = Date.now();
   if (_logsReadAt && now - _logsReadAt < LOGS_MEM_TTL) {
     return _logsMem.data.slice();
@@ -399,6 +456,25 @@ async function readAllLogsFast() {
   return merged;
 }
 
+/** Baca semua log dari Firestore: 1 query berhalaman, bukan N blob. */
+async function readAllLogsFS() {
+  const now = Date.now();
+  const docs = await fsdb.listAll('logs');
+  let merged = dedupeLogs(docs.map((d) => enrichLog(d.data || {})).filter((l) => l && l.nama));
+  merged = merged.filter((l) => !isLogDeleted(l.id_log || l.id || ''));
+  _logsMem = { at: 0, data: merged };
+  _logsReadAt = now;
+  return merged;
+}
+
+/** Pintu baca log: RAM -> Firestore / Blob. */
+async function readAllLogsFast() {
+  const now = Date.now();
+  if (_logsReadAt && now - _logsReadAt < LOGS_MEM_TTL) return _logsMem.data.slice();
+  if (useFS) return await readAllLogsFS();
+  return await readAllLogsBlob();
+}
+
 /** Status merge log lama: { done, cursor } */
 let _legacyCache = null;
 async function legacyMergeDone() {
@@ -445,6 +521,12 @@ async function mergeLegacyStep(base) {
 }
 
 async function writeAllLogsFast(logs) {
+  if (useFS) {
+    await fsdb.replaceAll('logs', logs || [], (l) => l.id_log || l.id);
+    _logsMem = { at: Date.now(), data: (logs || []).slice() };
+    _logsReadAt = Date.now();
+    return;
+  }
   // Snapshot penuh (dipakai dedupe & hapus semua): tulis dasar, lalu buang file entry.
   let files = [];
   try { files = await listAll(ENTRY_PREFIX); } catch (e) {}
@@ -474,9 +556,24 @@ function mergePayments(logs, payMap) {
 async function loadTable(table) {
   const path = table === 'lis' ? DB_LIS : DB_ANGGOTA;
   const seed = table === 'lis' ? SEED_LIS : SEED_ANGGOTA;
+  if (useFS) {
+    try {
+      const doc = await fsdb.getDoc('meta', table);
+      if (doc && Array.isArray(doc.items) && doc.items.length) return doc.items;
+    } catch (e) { console.warn('meta firestore:', e.message); }
+  }
   const saved = await readJsonOrNull(path);
   if (Array.isArray(saved)) return saved;
   return seed;
+}
+
+/** Simpan tabel master: Firestore (kalau aktif) + Blob sebagai cadangan. */
+async function saveTable(table, rows) {
+  if (useFS) {
+    try { await fsdb.setDocs('meta', [{ id: table, items: rows, at: Date.now() }], (d) => d.id); }
+    catch (e) { console.warn('simpan meta firestore:', e.message); }
+  }
+  await writeJson(table === 'lis' ? DB_LIS : DB_ANGGOTA, rows);
 }
 
 /** Baca banyak blob paralel (dibatasi per batch biar nggak kena rate limit) */
@@ -530,7 +627,11 @@ module.exports = async (req, res) => {
   // ---------- GET ----------
   if (req.method === 'GET') {
     if (!action || action === 'ping') {
-      return send(res, 200, { ok: true, mode: 'vercel', version: SERVER_VERSION, ts: nowWIB() });
+      return send(res, 200, {
+        ok: true, mode: 'vercel', version: SERVER_VERSION,
+        driver: useFS ? 'firestore' : 'blob',
+        dbReady: fsdb.ready(), ts: nowWIB(),
+      });
     }
 
     // Master anggota + database pengurus LIS
@@ -943,7 +1044,7 @@ module.exports = async (req, res) => {
           const merged = Object.assign({}, idx >= 0 ? rows[idx] : {}, rec, { id });
           if (idx >= 0) rows[idx] = merged;
           else rows.push(merged);
-          await writeJson(table === 'lis' ? DB_LIS : DB_ANGGOTA, rows);
+          await saveTable(table, rows);
           return send(res, 200, { ok: true, mode: idx >= 0 ? 'update' : 'add', record: merged, count: rows.length });
         }
         const id = String(body.id || '').trim();
@@ -952,7 +1053,7 @@ module.exports = async (req, res) => {
         if (idx < 0) return send(res, 404, { ok: false, error: 'Data tidak ditemukan' });
         if (hard) rows.splice(idx, 1);
         else rows[idx] = Object.assign({}, rows[idx], { status: 'Nonaktif' });
-        await writeJson(table === 'lis' ? DB_LIS : DB_ANGGOTA, rows);
+        await saveTable(table, rows);
         return send(res, 200, { ok: true, mode: hard ? 'hard-delete' : 'deactivate', count: rows.length });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menyimpan database: ' + err.message });
@@ -989,6 +1090,42 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Salin SEMUA data dari Blob ke Firestore (sekali jalan, aman diulang)
+    if (action === 'migrate_firestore') {
+      if (!isStrictAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah (migrasi wajib Server Pass)' });
+      }
+      if (!fsdb.ready()) {
+        return send(res, 400, { ok: false, error: 'GOOGLE_SA_JSON / project Firestore belum diset di env Vercel' });
+      }
+      try {
+        // Baca sumber dari Blob, bukan cache Firestore.
+        _logsMem = { at: 0, data: [] };
+        _logsReadAt = 0;
+        _payMem = null;
+        _payAt = 0;
+        const logs = await readAllLogsBlob();
+        const payMap = await readPaymentsBlob();
+        const payDocs = Object.keys(payMap).map((k) => payMap[k]).filter((p) => p && p.tgl && p.stambuk);
+        const nLogs = await fsdb.replaceAll('logs', logs, (l) => l.id_log || l.id);
+        const nPay = await fsdb.replaceAll('pay', payDocs, (p) => `${p.tgl}__${p.stambuk}`);
+        const anggota = await loadTable('anggota');
+        const lis = await loadTable('lis');
+        await fsdb.setDocs('meta', [
+          { id: 'anggota', items: anggota, at: Date.now() },
+          { id: 'lis', items: lis, at: Date.now() },
+        ], (d) => d.id);
+        const check = await fsdb.listAll('logs');
+        return send(res, 200, {
+          ok: true, logs: nLogs, pay: nPay,
+          anggota: anggota.length, lis: lis.length,
+          fsCount: check.length, verified: check.length === logs.length,
+        });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Migrasi gagal: ' + err.message });
+      }
+    }
+
     if (action === 'clearall') {
       if (!isStrictAdmin(body.password)) {
         return send(res, 401, { ok: false, error: 'Password admin salah (Hapus Semua Data wajib Server Pass)' });
@@ -1002,6 +1139,14 @@ module.exports = async (req, res) => {
         _payMem = null;
         _payAt = 0;
         _logsDel.clear();
+        if (useFS) {
+          // Firestore aktif: kosongkan dokumen log + status bayar, Blob cuma cadangan.
+          let clearedFS = 0;
+          try { clearedFS += await fsdb.clearCollection('logs'); } catch (e) { console.warn('clear fs logs:', e.message); }
+          try { clearedFS += await fsdb.clearCollection('pay'); } catch (e) { console.warn('clear fs pay:', e.message); }
+          try { await writeJson(LOGS_DB, []); } catch (e) { console.warn('clear snapshot blob:', e.message); }
+          return send(res, 200, { ok: true, mode: 'firestore', cleared: clearedFS, deleted: 0 });
+        }
         // 1) Kosongkan store baru (satu blob) + buang file entry append-only
         let cleared = 0;
         try { await writeJson(LOGS_DB, []); cleared++; } catch (e) { console.warn('clear logs:', e.message); }
