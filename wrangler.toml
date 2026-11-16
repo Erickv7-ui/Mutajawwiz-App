@@ -1,0 +1,16 @@
+name = "mutajawwiz"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist"
+
+# Binding database D1. Isi database_id dari hasil `npx wrangler d1 create mutajawwiz`.
+[[d1_databases]]
+binding = "DB"
+database_name = "mutajawwiz"
+database_id = "GANTI-DENGAN-ID-DARI-WRANGLER"
+
+# Variabel non-rahasia. Password admin sebaiknya disimpan sebagai secret:
+#   npx wrangler pages secret put ADMIN_PASSWORD
+[vars]
+DB_DRIVER = "d1"
+TZ = "Asia/Jakarta"

@@ -6,3 +6,4 @@ dist/
 .DS_Store
 __probe.html
 __theme-*-preview.html
+.wrangler/
