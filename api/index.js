@@ -6,8 +6,9 @@ let _blobLib = null;
 function blobs() {
   if (_blobLib) return _blobLib;
   try {
-    const req = (0, eval)('require');
-    _blobLib = req('@vercel/blob');
+    // `module.require` jalan di Node/Vercel (CJS), tapi TIDAK dianalisis bundler
+    // Cloudflare sehingga paket Blob tidak ikut di-bundle ke Worker.
+    _blobLib = module.require('@vercel/blob');
   } catch (e) {
     _blobLib = {};
     console.warn('@vercel/blob tidak tersedia:', e.message);
