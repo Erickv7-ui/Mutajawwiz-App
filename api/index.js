@@ -285,6 +285,9 @@ async function readPaymentsD1() {
   return merged;
 }
 
+/** Baca status bayar tanpa cache RAM (dipakai aksi pay/unpay: butuh kondisi terbaru). */
+async function readPaymentsFresh() { _payAt = 0; return await readPayments(); }
+
 /** Pintu baca status bayar: D1 / Firestore / Blob. */
 async function readPayments() {
   if (useD1()) return await readPaymentsD1();
