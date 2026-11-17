@@ -13,7 +13,9 @@
     "db:seed": "wrangler d1 execute mutajawwiz --remote --file=db/seed-master.sql",
     "db:sql": "wrangler d1 execute mutajawwiz --remote --command",
     "db:backup": "wrangler d1 export mutajawwiz --remote --output db/backup.sql",
-    "db:restore": "node scripts/migrate-to-d1.js"
+    "db:restore": "node scripts/migrate-to-d1.js",
+    "bump": "node scripts/bump-version.js",
+    "ship": "node scripts/bump-version.js && node scripts/build-static.js && wrangler pages deploy dist --project-name mutajawwiz --branch main"
   },
   "dependencies": {},
   "devDependencies": {
