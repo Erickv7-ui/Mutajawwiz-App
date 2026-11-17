@@ -1,4 +1,4 @@
-const { randomBytes } = require('crypto');
+const { randomBytes, createHash, timingSafeEqual } = require('crypto');
 const d1db = require('../lib/store-d1');
 
 // ---------- runtime ----------
@@ -18,12 +18,51 @@ function driverName() { return 'd1'; }
 function hasDb() { return !!_rt.d1; }
 
 // versi kode server — dipakai untuk memastikan deploy sudah jalan
-const SERVER_VERSION = 'v61';
+const SERVER_VERSION = 'v62';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
 // PIN Pusat (dipakai UI untuk buka sesi admin). Server menerima PIN ini juga
 // untuk aksi harian (lunas, ekspor, CRUD) supaya user tidak bingung dua sandi.
 const ADMIN_PIN = process.env.ADMIN_PIN || '2627';
+
+// ---------- password gerbang web ----------
+// Disimpan di D1 (tabel meta, key `webpass`) supaya berlaku di semua PC/browser,
+// bukan cuma di browser yang dipakai untuk mengganti. Yang disimpan hanya
+// sha256(salt + password), password aslinya tidak pernah ditulis ke DB.
+const WEBPASS_KEY = 'webpass';
+const DEFAULT_WEB_PASS = '123456';
+
+function passHash(pass, salt) {
+  return createHash('sha256').update(String(salt) + ':' + String(pass)).digest('hex');
+}
+
+function safeEq(a, b) {
+  const x = Buffer.from(String(a), 'utf8');
+  const y = Buffer.from(String(b), 'utf8');
+  if (x.length !== y.length) return false;
+  try { return timingSafeEqual(x, y); } catch { return false; }
+}
+
+async function readWebPass() {
+  try {
+    const rec = await d1db.getMeta(_rt.d1, WEBPASS_KEY);
+    if (rec && rec.hash && rec.salt) return rec;
+  } catch {}
+  return null;
+}
+
+async function checkWebPass(pass) {
+  const rec = await readWebPass();
+  if (!rec) return String(pass) === DEFAULT_WEB_PASS;
+  return safeEq(passHash(pass, rec.salt), rec.hash);
+}
+
+async function writeWebPass(pass) {
+  const salt = randomBytes(12).toString('hex');
+  const rec = { salt, hash: passHash(pass, salt), at: Date.now() };
+  await d1db.setMeta(_rt.d1, WEBPASS_KEY, rec);
+  return rec;
+}
 
 function send(res, status, obj) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -254,6 +293,16 @@ const handler = async (req, res) => {
       });
     }
 
+    // Status password gerbang web (custom = sudah pernah diganti)
+    if (action === 'webpass') {
+      try {
+        const rec = await readWebPass();
+        return send(res, 200, { ok: true, custom: !!rec, at: rec ? rec.at : null });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal baca password web: ' + err.message });
+      }
+    }
+
     // Master anggota + database pengurus LIS
     if (action === 'master' || action === 'lis') {
       const table = action === 'lis' ? 'lis' : 'anggota';
@@ -331,6 +380,34 @@ const handler = async (req, res) => {
   }
 
   // ---------- POST ----------
+
+  // Verifikasi password gerbang web (server = sumber kebenaran, sama di semua PC)
+  if (action === 'webpass_verify') {
+    try {
+      const pass = String(body.password || '');
+      if (!pass) return send(res, 400, { ok: false, error: 'Password wajib diisi' });
+      const okPass = await checkWebPass(pass);
+      return send(res, okPass ? 200 : 401, { ok: okPass, error: okPass ? undefined : 'Password salah' });
+    } catch (err) {
+      return send(res, 500, { ok: false, error: 'Gagal verifikasi: ' + err.message });
+    }
+  }
+
+  // Ganti password gerbang web (wajib password lama)
+  if (action === 'webpass_set') {
+    try {
+      const oldPass = String(body.old || '');
+      const newPass = String(body.new || '');
+      if (!oldPass || !newPass) return send(res, 400, { ok: false, error: 'Password lama dan baru wajib diisi' });
+      if (newPass.length < 4) return send(res, 400, { ok: false, error: 'Password baru minimal 4 karakter' });
+      const okOld = await checkWebPass(oldPass);
+      if (!okOld) return send(res, 401, { ok: false, error: 'Password lama salah' });
+      await writeWebPass(newPass);
+      return send(res, 200, { ok: true, custom: true });
+    } catch (err) {
+      return send(res, 500, { ok: false, error: 'Gagal ganti password: ' + err.message });
+    }
+  }
   if (req.method === 'POST') {
     // Simpan banyak absensi sekaligus (batch)
     if (action === 'save_bulk') {

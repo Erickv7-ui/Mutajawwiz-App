@@ -608,3 +608,23 @@ Sesi 30 hari dari v60 dibatalkan. Aturannya sekarang:
 - Perbaikan anti-kedip dari v59/v60 tetap berlaku (gerbang tampil sejak lukisan pertama, class `authed` di `<html>`).
 
 Verifikasi (Edge headless, profil bersih): belum login → gerbang tampil menutup konten; sesi ada di tab → `display:none`, dashboard tampil; sesi hilang + sisa kunci v60 masih ada di localStorage → gerbang tampil lagi. Hasil: LULUS.
+
+### 17 Nov 2026 — v62: password gerbang web pindah ke server (D1), sama di semua PC
+
+Keluhan: password diganti di satu PC, di PC lain tetap default. Penyebabnya password gerbang disimpan di `localStorage` (`lis2627_web_pass_v2`) — itu per-browser, jadi tidak mungkin ikut ke PC lain.
+
+Sekarang password gerbang disimpan di D1, tabel `meta`, key `webpass`, isinya `{salt, hash}` dengan `hash = sha256(salt + password)`. Password asli tidak pernah ditulis ke DB dan tidak pernah dikirim balik ke browser.
+
+Endpoint baru:
+| Aksi | Fungsi |
+|---|---|
+| `GET ?action=webpass` | status: `{custom:true/false}` (untuk sembunyikan hint default) |
+| `POST ?action=webpass_verify` `{password}` | cek password, 200 kalau cocok / 401 kalau salah |
+| `POST ?action=webpass_set` `{old,new}` | ganti password (wajib password lama, minimal 4 karakter) |
+
+Perilaku klien (`js/auth.js`):
+- Login sekarang verifikasi ke server → password sama di semua PC/HP.
+- Kalau server tidak terjangkau (offline), fallback ke hash lokal supaya tetap bisa masuk.
+- Hint "Password default: 123456" hilang otomatis begitu server bilang `custom: true`.
+
+Verifikasi produksi (v62): `webpass` custom=false → login `123456` 200, password ngawur 401 → `webpass_set` 200 → password lama 401, password baru 200, status custom=true → password lama salah saat ganti 401. Data uji dihapus lagi (`DELETE FROM meta WHERE k='webpass'`), jadi kondisi sekarang: **password default `123456`** dan siap diganti dari PC mana pun. Cek klien headless: gerbang tampil, hint tampil, klien memanggil `?action=webpass`, nol error konsol.

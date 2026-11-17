@@ -26,6 +26,33 @@
     return def;
   }
 
+  /* Endpoint API (sama dengan js/api.js): default /api, bisa diubah di Pengaturan */
+  function apiBase() {
+    try {
+      var b = (localStorage.getItem('lis2627_api_url') || '/api').trim();
+      if (b === 'local') return '';
+      b = b || '/api';
+      return b.replace(/\/+$/, '');
+    } catch (e) { return '/api'; }
+  }
+
+  function apiGet(action) {
+    var b = apiBase();
+    if (!b) return Promise.reject(new Error('Mode lokal'));
+    return fetch(b + '?action=' + encodeURIComponent(action), { cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); });
+  }
+
+  function apiPost(action, body) {
+    var b = apiBase();
+    if (!b) return Promise.reject(new Error('Mode lokal'));
+    return fetch(b + '?action=' + encodeURIComponent(action), {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(Object.assign({ action: action }, body || {}))
+    }).then(function (r) { return r.json(); });
+  }
+
   function $(id) { return document.getElementById(id); }
   function show(el) { if (el) el.classList.remove('hidden'); }
   function hide(el) { if (el) el.classList.add('hidden'); }
@@ -71,21 +98,27 @@
     var val = inp ? String(inp.value || '').trim() : '';
     if (!val) { setErr('Password wajib diisi.'); return; }
     if (btn) { btn.disabled = true; btn.textContent = 'MEMERIKSA...'; }
-    try {
-      var stored = storedHash();
-      if (hash(val) !== stored) {
-        setErr('Password salah.');
-        if (inp) { inp.value = ''; inp.focus(); }
-      } else {
-        saveAuthed();
-        setErr('');
-        gate(false);
-      }
-    } catch (e) {
-      setErr('Error: ' + (e && e.message ? e.message : 'tidak diketahui'));
-    } finally {
+
+    function finish(ok, msg) {
       if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
+      if (ok) { saveAuthed(); setErr(''); gate(false); return; }
+      setErr(msg || 'Password salah.');
+      if (inp) { inp.value = ''; inp.focus(); }
     }
+
+    // Password disimpan di server (D1) supaya sama di semua PC.
+    apiPost('webpass_verify', { password: val }).then(function (r) {
+      if (r && r.ok) finish(true);
+      else finish(false, (r && r.error) || 'Password salah.');
+    }, function () {
+      // Server tidak terjangkau: izinkan cocok dengan hash lokal (mode offline).
+      try {
+        if (hash(val) === storedHash()) finish(true);
+        else finish(false, 'Password salah (offline, pakai password lokal).');
+      } catch (e) {
+        finish(false, 'Error: ' + (e && e.message ? e.message : 'tidak diketahui'));
+      }
+    });
   }
 
   function doChangePass() {
@@ -97,17 +130,32 @@
     hide(ok);
     if (!oldVal || !newVal || !confVal) { if (err) { err.textContent = 'Semua kolom wajib diisi.'; show(err); } return; }
     if (newVal !== confVal) { if (err) { err.textContent = 'Password baru tidak cocok.'; show(err); } return; }
-    if (hash(oldVal) !== storedHash()) { if (err) { err.textContent = 'Password lama salah.'; show(err); } return; }
-    try {
-      localStorage.setItem(PASS_KEY, hash(newVal));
+    if (newVal.length < 4) { if (err) { err.textContent = 'Password baru minimal 4 karakter.'; show(err); } return; }
+
+    function done(msg) {
       hide(err);
-      if (ok) { ok.textContent = 'Password berhasil diganti.'; show(ok); }
+      if (ok) { ok.textContent = msg; show(ok); }
       if (oldIn) oldIn.value = '';
       if (newIn) newIn.value = '';
       if (confIn) confIn.value = '';
-    } catch (e) {
-      if (err) { err.textContent = 'Gagal menyimpan password.'; show(err); }
     }
+    function fail(msg) { if (err) { err.textContent = msg; show(err); } }
+
+    apiPost('webpass_set', { old: oldVal, new: newVal }).then(function (r) {
+      if (r && r.ok) {
+        try { localStorage.setItem(PASS_KEY, hash(newVal)); } catch (e) {}
+        done('Password diganti. Berlaku di semua PC.');
+      } else {
+        fail((r && r.error) || 'Gagal mengganti password.');
+      }
+    }, function () {
+      // Server tidak terjangkau: ganti hash lokal saja (hanya browser ini)
+      if (hash(oldVal) !== storedHash()) { fail('Password lama salah.'); return; }
+      try {
+        localStorage.setItem(PASS_KEY, hash(newVal));
+        done('Password diganti (offline — hanya berlaku di browser ini).');
+      } catch (e) { fail('Gagal menyimpan password.'); }
+    });
   }
 
   function init() {
@@ -119,7 +167,14 @@
     // hint "password default" cuma relevan kalau password belum pernah diganti
     try {
       var hint = $('gate-hint');
-      if (hint && storedHash() !== hash(DEFAULT_PASS)) hint.style.display = 'none';
+      if (hint) {
+        apiGet('webpass').then(function (r) {
+          if (r && r.custom) hint.style.display = 'none';
+          else if (storedHash() !== hash(DEFAULT_PASS)) hint.style.display = 'none';
+        }, function () {
+          if (storedHash() !== hash(DEFAULT_PASS)) hint.style.display = 'none';
+        });
+      }
     } catch (e) {}
 
     // Reset password darurat: buka web dengan ?resetpass=1
