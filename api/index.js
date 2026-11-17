@@ -1,86 +1,27 @@
 const { randomBytes } = require('crypto');
-
-// Paket Vercel Blob dimuat malas: di Cloudflare (D1) paket ini tidak boleh ikut
-// di-bundle. `eval('require')` membuat bundler tidak bisa menganalisis nama paket.
-let _blobLib = null;
-function blobs() {
-  if (_blobLib) return _blobLib;
-  try {
-    // `module.require` jalan di Node/Vercel (CJS), tapi TIDAK dianalisis bundler
-    // Cloudflare sehingga paket Blob tidak ikut di-bundle ke Worker.
-    _blobLib = module.require('@vercel/blob');
-  } catch (e) {
-    _blobLib = {};
-    console.warn('@vercel/blob tidak tersedia:', e.message);
-  }
-  return _blobLib;
-}
-const put = (...a) => blobs().put(...a);
-const list = (...a) => blobs().list(...a);
-const get = (...a) => blobs().get(...a);
-const del = (...a) => blobs().del(...a);
+const d1db = require('../lib/store-d1');
 const SEED_ANGGOTA = require('../data/master.json');
 const SEED_LIS = require('../data/lis.json');
 
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-const LOG_PREFIX = 'logs/';
-const PAY_PREFIX = 'pay/';
-const DB_ANGGOTA = 'db/anggota.json';
-const DB_LIS = 'db/lis.json';
-const LOGS_DB = 'db/logs.json';
-// Tulisan absensi disimpan sebagai file terpisah per batch (append-only).
-// Blob Vercel butuh 18-25 dtk untuk konsisten; read-modify-write pada satu file
-// membuat simpan berurutan saling menimpa (entri terakhir/pertama hilang).
-const ENTRY_PREFIX = 'db/entry/';
-
-// ---------- pilihan backend database ----------
-// DB_DRIVER=firestore + GOOGLE_SA_JSON -> semua data (log, status bayar, master)
-// disimpan di Google Cloud Firestore, Blob cuma jadi cadangan/migrasi.
-const fsdb = require('../lib/firestore');
-const d1db = require('../lib/store-d1');
-
-// Runtime bisa diganti per request (Cloudflare Pages Functions memberi env lewat
-// parameter). Di Vercel/Node, env sudah ada di process.env sejak awal.
-const _rt = {
-  driver: String(process.env.DB_DRIVER || 'blob').toLowerCase(),
-  d1: null,
-  token: process.env.BLOB_READ_WRITE_TOKEN || '',
-};
+// ---------- runtime ----------
+// Satu-satunya backend: Cloudflare D1 (SQLite). Binding `DB` dikirim adapter
+// (functions/api/[[path]].js) lewat configure(). Tidak ada lagi jalur Blob /
+// Firestore / file JSON: kalau binding tidak ada, server menjawab 503 jelas
+// daripada diam-diam menyimpan di memori lalu hilang.
+const _rt = { d1: null };
 
 /** Dipanggil adapter (Cloudflare) sebelum handler jalan. */
 function configure(env) {
   if (!env) return;
-  if (env.DB) { _rt.d1 = env.DB; if (!process.env.DB_DRIVER) _rt.driver = 'd1'; }
-  if (env.DB_DRIVER) _rt.driver = String(env.DB_DRIVER).toLowerCase();
-  if (env.BLOB_READ_WRITE_TOKEN) _rt.token = env.BLOB_READ_WRITE_TOKEN;
+  if (env.DB) _rt.d1 = env.DB;
 }
 
-function driverName() {
-  if (_rt.driver === 'd1' && _rt.d1) return 'd1';
-  if (_rt.driver === 'firestore' && fsdb.ready()) return 'firestore';
-  return 'blob';
-}
-function useFS() { return driverName() === 'firestore'; }
-function useD1() { return driverName() === 'd1'; }
+function driverName() { return 'd1'; }
+function hasDb() { return !!_rt.d1; }
+
 // versi kode server — dipakai untuk memastikan deploy sudah jalan
-const SERVER_VERSION = 'v51';
-const MIGRATED_FLAG = 'db/_migrated.json';
-const LEGACY_MERGE_FLAG = 'db/_legacy_merged.json';
+const SERVER_VERSION = 'v52';
 
-/** Flag supaya migrasi (list advanced op) cuma jalan sekali */
-let _migratedCache = null;
-async function isMigrated() {
-  if (_migratedCache !== null) return _migratedCache;
-  try {
-    const v = await readJsonOrNull(MIGRATED_FLAG);
-    _migratedCache = !!v;
-    return _migratedCache;
-  } catch { return false; }
-}
-async function markMigrated() {
-  _migratedCache = true;
-  try { await writeJson(MIGRATED_FLAG, { v: 1, ts: Date.now() }); } catch (e) { console.warn('markMigrated:', e.message); }
-}
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
 // PIN Pusat (dipakai UI untuk buka sesi admin). Server menerima PIN ini juga
 // untuk aksi harian (lunas, ekspor, CRUD) supaya user tidak bingung dua sandi.
@@ -97,16 +38,14 @@ function send(res, status, obj) {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
   }
-  // Portabel: jalan di Vercel maupun server Node biasa (Cloud Run/VPS).
+  // Portabel: jalan di Pages Functions maupun Node biasa.
   res.statusCode = status;
   res.end(JSON.stringify(obj));
 }
 
 function nowWIB() {
   const d = new Date();
-  // WIB = UTC+7, getTimezoneOffset is in minutes (local minus UTC)
-  // Server usually runs UTC so offset is 0.
-  // Force +7 offset.
+  // WIB = UTC+7, dipaksa supaya server yang jalan di UTC tetap benar.
   const offsetMs = 7 * 60 * 60 * 1000;
   const wib = new Date(d.getTime() + offsetMs);
   return wib.toISOString().replace('T', ' ').substring(0, 19);
@@ -125,32 +64,6 @@ function getRawBody(req) {
   });
 }
 
-async function readBlob(pathname) {
-  const r = await get(pathname, { access: 'private', token: TOKEN });
-  if (!r || !r.stream) return null;
-  // Private blob: consistent read via stream (langsung latest, tanpa CDN cache 60s)
-  const text = await new Response(r.stream).text();
-  return JSON.parse(text);
-}
-
-async function readJsonOrNull(pathname) {
-  try {
-    return await readBlob(pathname);
-  } catch {
-    return null;
-  }
-}
-
-async function writeJson(pathname, obj) {
-  await put(pathname, JSON.stringify(obj), {
-    access: 'private',
-    token: TOKEN,
-    contentType: 'application/json',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-  });
-}
-
 function isAdmin(pw) {
   const v = String(pw || '').trim();
   return v === ADMIN_PASSWORD || v === ADMIN_PIN;
@@ -160,189 +73,6 @@ function isStrictAdmin(pw) {
   return String(pw || '').trim() === ADMIN_PASSWORD;
 }
 
-/** Ambil SEMUA blob dengan prefix, sudah dipaginasi */
-async function listAll(prefix) {
-  let page = await list({ prefix, token: TOKEN });
-  let blobs = [...page.blobs];
-  while (page.cursor) {
-    page = await list({ prefix, token: TOKEN, cursor: page.cursor });
-    blobs.push(...page.blobs);
-  }
-  return blobs;
-}
-
-async function listAllLogs() {
-  return listAll(LOG_PREFIX);
-}
-
-/**
- * Cache RAM status pembayaran (hidden/lunas).
- * Alasan: blob baru konsisten 18-25 detik setelah ditulis. Dulu, hide banyak baris
- * berurutan membuat tiap request membaca blob basi lalu menimpa hasil hide sebelumnya
- * -> sebagian hide "undo" sendiri setelah refresh. Sekarang tulisan langsung masuk RAM
- * dan pembacaan memakai RAM selama jendela segar, lalu di-union dengan isi blob.
- */
-const PAY_MEM_FRESH = 5000;
-let _payMem = null;
-let _payAt = 0;
-
-/**
- * Kunci tulis. Dua permintaan simpan yang datang hampir bersamaan (klik cepat, atau
- * simpan tunggal berbarengan dengan flush antrian) dulu sama-sama membaca snapshot
- * blob yang sama lalu saling menimpa — server menjawab ok, tapi entri terakhir hilang.
- * Sekarang semua baca-ubah-tulis dijalankan berurutan.
- */
-function makeWriteLock() {
-  let tail = Promise.resolve();
-  return function withLock(fn) {
-    const run = tail.then(fn, fn);
-    tail = run.then(() => {}, () => {});
-    return run;
-  };
-}
-const withLogsLock = makeWriteLock();
-const withPayLock = makeWriteLock();
-
-/** Baca segar untuk operasi tulis: lewati cache RAM supaya snapshot paling baru. */
-async function readLogsFresh() { _logsReadAt = 0; return readAllLogsFast(); }
-
-/**
- * Tulis log + verifikasi lintas-instance. Vercel bisa menjalankan beberapa
- * instance sekaligus; instance lain yang menulis dengan snapshot lama bisa
- * menghapus entri yang baru kita simpan. Setelah menulis, cek ulang: kalau ada
- * entri yang hilang, tulis lagi (maks 3 putaran).
- */
-
-// Penanda hapus pembayaran: blob masih bisa menyajikan key lama 18-25 dtk, dan
-// union dengan RAM akan menghidupkan lagi key yang baru dihapus (unpay).
-const _payDel = new Map();
-function markPayDeleted(key) { _payDel.set(key, Date.now()); }
-function isPayDeleted(key) {
-  const at = _payDel.get(key);
-  if (!at) return false;
-  if (Date.now() - at > 60000) { _payDel.delete(key); return false; }
-  return true;
-}
-
-function payUnion(base, extra) {
-  const out = Object.assign({}, base || {});
-  Object.keys(extra || {}).forEach((k) => {
-    const a = out[k], b = extra[k];
-    if (!a) { out[k] = b; return; }
-    const ta = String(a.updated_at || ''), tb = String(b.updated_at || '');
-    out[k] = tb >= ta ? b : a;
-  });
-  Object.keys(out).forEach((k) => { if (isPayDeleted(k)) delete out[k]; });
-  return out;
-}
-
-/** Semua status pembayaran: key = `${tgl}__${stambuk}` */
-/** Baca status bayar dari Blob (jalur lama). */
-async function readPaymentsBlob() {
-  if (_payMem && (Date.now() - _payAt) < PAY_MEM_FRESH) return _payMem;
-  try {
-    const saved = await readJsonOrNull('db/pay.json');
-    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
-      // gabung dengan tulisan RAM yang belum kebaca di blob
-      const merged = _payMem ? payUnion(saved, _payMem) : saved;
-      _payMem = merged; _payAt = _payAt || 0;
-      return merged;
-    }
-  } catch {}
-  // fallback: scan lama (cuma jalan sekali, abis itu mark migrated)
-  if (await isMigrated()) return {};
-  try {
-    const records = await readMany(await listAll(PAY_PREFIX));
-    await markMigrated();
-    const map = {};
-    records.forEach((p) => { if (p && p.tgl && p.stambuk) map[`${p.tgl}__${p.stambuk}`] = p; });
-    return map;
-  } catch { return {}; }
-}
-
-/** Baca status bayar dari Firestore (1 query berhalaman). */
-async function readPaymentsFS() {
-  if (_payMem && (Date.now() - _payAt) < PAY_MEM_FRESH) return _payMem;
-  const docs = await fsdb.listAll('pay');
-  const map = {};
-  docs.forEach((d) => {
-    const p = d.data || {};
-    const key = p.tgl && p.stambuk ? `${p.tgl}__${p.stambuk}` : d.id;
-    map[key] = p;
-  });
-  const merged = _payMem ? payUnion(map, _payMem) : map;
-  _payMem = merged;
-  _payAt = Date.now();
-  return merged;
-}
-
-/** Baca status bayar dari D1: 1 query. */
-async function readPaymentsD1() {
-  if (_payMem && (Date.now() - _payAt) < PAY_MEM_FRESH) return _payMem;
-  const map = await d1db.listPay(_rt.d1);
-  const merged = _payMem ? payUnion(map, _payMem) : map;
-  _payMem = merged;
-  _payAt = Date.now();
-  return merged;
-}
-
-/** Baca status bayar tanpa cache RAM (dipakai aksi pay/unpay: butuh kondisi terbaru). */
-async function readPaymentsFresh() { _payAt = 0; return await readPayments(); }
-
-/** Pintu baca status bayar: D1 / Firestore / Blob.
- *  Selalu balikin salinan: pemanggil (pay/unpay) boleh mengubah map tanpa merusak
- *  cache RAM, supaya writePayments bisa mendeteksi perubahan (diff) dan menulis. */
-async function readPayments() {
-  let map;
-  if (useD1()) map = await readPaymentsD1();
-  else if (useFS()) map = await readPaymentsFS();
-  else map = await readPaymentsBlob();
-  return Object.assign({}, map || {});
-}
-
-/** Gabungkan log dengan status bayar (tidak ada record = belum lunas) */
-async function writePayments(map) {
-  // write-through: RAM dulu supaya request berikutnya tidak membaca blob basi.
-  // Sengaja TIDAK membaca blob lagi di sini: unpay menghapus key, dan penggabungan
-  // akan menghidupkan kembali key yang baru dihapus.
-  const prev = _payMem || {};
-  _payMem = Object.assign({}, map);
-  _payAt = Date.now();
-  if (useD1()) {
-    // Hemat: cuma tulis yang berubah, hapus yang dibuang.
-    const changed = [];
-    Object.keys(map).forEach((k) => {
-      if (JSON.stringify(map[k] || null) !== JSON.stringify(prev[k] || null)) {
-        const p = map[k];
-        if (p && p.tgl && p.stambuk) changed.push(p);
-      }
-    });
-    const removed = Object.keys(prev).filter((k) => !(k in map));
-    if (changed.length) await d1db.upsertPay(_rt.d1, changed);
-    if (removed.length) await d1db.deletePay(_rt.d1, removed);
-    return;
-  }
-  if (useFS()) {
-    // Hemat: hanya tulis dokumen yang benar-benar berubah, hapus yang dibuang.
-    const changed = [];
-    Object.keys(map).forEach((k) => {
-      if (JSON.stringify(map[k] || null) !== JSON.stringify(prev[k] || null)) {
-        const p = map[k];
-        if (p && p.tgl && p.stambuk) changed.push(p);
-      }
-    });
-    const removed = Object.keys(prev).filter((k) => !(k in map));
-    if (changed.length) await fsdb.setDocs('pay', changed, (p) => `${p.tgl}__${p.stambuk}`);
-    if (removed.length) await fsdb.deleteDocs('pay', removed);
-    return;
-  }
-  await writeJson('db/pay.json', map);
-}
-
-/**
- * Store log cepat: satu blob db/logs.json (bukan ratusan blob per hari).
- * Migrasi otomatis dari blob lama kalau db/logs.json belum ada.
- */
 /**
  * Kunci identitas entri. Dulu berbasis isi (tanggal+nama+bahasa+ucapan+kamar+pengabsen),
  * akibatnya absen dobel yang DISENGAJA (orang sama, hari sama) ikut dibuang dan
@@ -357,7 +87,6 @@ function logContentKey(l) {
     (l.ucapan || 'None').toLowerCase()].join('|');
 }
 
-/** Buang duplikat konten, simpan yang paling awal */
 /** Isi rayon & tingkat dari kamar/kelas kalau kosong (database lama) */
 function enrichLog(l) {
   const rayons = ['Madinah', 'Ampel (1)', 'Ampel (2)', 'Gunung Jati', 'MTQ', 'RL'];
@@ -386,255 +115,67 @@ function dedupeLogs(arr) {
 }
 
 /**
- * Cache RAM write-through.
- * Blob Vercel punya jeda read-after-write (terukur 18-25 detik): setelah `put`,
- * `get` bisa masih mengembalikan versi lama. Instance yang baru menulis
- * menyimpan salinan di RAM dan pembacaan digabung (union) dengan isi blob,
- * jadi entri baru tidak pernah "hilang" walau blob masih stale.
- * Nol operasi blob tambahan — murni memori proses.
+ * Kunci tulis per-proses. Dua permintaan simpan yang datang hampir bersamaan
+ * (klik cepat, atau simpan tunggal berbarengan dengan flush antrian) dijalankan
+ * berurutan supaya cek duplikat client_id tidak balapan.
  */
-let _logsMem = { at: 0, data: [] };
-let _logsReadAt = 0;
-let _lastDedupeAt = 0;
-const LOGS_MEM_TTL = 10000;  // pakai RAM saja kalau pembacaan terakhir < 10 detik
-const LOGS_MEM_FRESH = 3000;  // union RAM HANYA 3 detik setelah tulis (write-through),
-                              // lebih lama dari itu blob yang menang supaya data yang sudah
-                              // dihapus tidak dibangkitkan lagi oleh cache RAM instance lain.
+function makeWriteLock() {
+  let tail = Promise.resolve();
+  return function withLock(fn) {
+    const run = tail.then(fn, fn);
+    tail = run.then(() => {}, () => {});
+    return run;
+  };
+}
+const withLogsLock = makeWriteLock();
+const withPayLock = makeWriteLock();
 
-function unionLogs(base, extra) {
-  const seen = new Set();
-  const out = [];
-  for (const l of [...(base || []), ...(extra || [])]) {
-    if (!l) continue;
-    const k = logContentKey(l);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(l);
-  }
-  return out;
+// ---------- log absensi ----------
+
+/** Semua log: 1 query D1 (berhalaman), bukan N file. */
+async function readAllLogs() {
+  const rows = await d1db.listLogs(_rt.d1);
+  return dedupeLogs(rows.map((r) => enrichLog(r)).filter((l) => l && l.nama));
 }
 
-/**
- * Tulis absensi baru sebagai file sendiri (append-only, tanpa baca dulu).
- * Karena tidak ada read-modify-write, dua simpan yang berbarengan tidak bisa
- * saling menimpa walau blob masih menyajikan versi lama.
- */
-async function appendLogEntries(items) {
+/** Simpan entri baru: INSERT OR REPLACE per baris, tanpa baca-ubah-tulis. */
+async function appendLogs(items) {
   const list = (items || []).filter((x) => x && x.nama);
   if (!list.length) return;
-  if (useD1()) {
-    // D1: INSERT OR REPLACE per entri, 1 batch. Tanpa baca dulu.
-    await d1db.upsertLogs(_rt.d1, list);
-    return;
-  }
-  if (useFS()) {
-    // Firestore: 1 dokumen per entri, tanpa baca dulu.
-    await fsdb.setDocs('logs', list, (l) => l.id_log || l.id);
-    return;
-  }
-  const name = ENTRY_PREFIX + 'e-' + Date.now() + '-' + randomBytes(4).toString('hex') + '.json';
-  await writeJson(name, { items: list, at: Date.now() });
+  await d1db.upsertLogs(_rt.d1, list);
 }
 
-/** Hapus log = tulis penanda hapus (juga append-only). */
-async function appendLogDeletes(ids) {
+async function deleteLogs(ids) {
   const list = (ids || []).filter(Boolean).map(String);
   if (!list.length) return;
-  if (useD1()) {
-    await d1db.deleteLogs(_rt.d1, list);
-    return;
-  }
-  if (useFS()) {
-    await fsdb.deleteDocs('logs', list);
-    return;
-  }
-  const name = ENTRY_PREFIX + 'd-' + Date.now() + '-' + randomBytes(4).toString('hex') + '.json';
-  await writeJson(name, { del: list, at: Date.now() });
+  await d1db.deleteLogs(_rt.d1, list);
 }
 
-// id yang baru dihapus dari instance ini — jaga-jaga blob masih menyajikan versi lama
-const _logsDel = new Map();
-function markLogDeleted(id) { _logsDel.set(String(id), Date.now()); }
-function isLogDeleted(id) {
-  const at = _logsDel.get(String(id));
-  if (!at) return false;
-  if (Date.now() - at > 90000) { _logsDel.delete(String(id)); return false; }
-  return true;
+async function replaceLogs(logs) {
+  await d1db.replaceLogs(_rt.d1, logs || []);
 }
 
-/** Tulis snapshot penuh (dipakai dedupe / hapus semua) lalu buang file entry. */
-let _compacting = false;  // jangan jalankan dua compaction sekaligus (boros op + lambat)
+// ---------- status bayar ----------
+// Key = `${tgl}__${stambuk}`. Tanpa cache RAM: D1 sudah konsisten setelah tulis,
+// jadi pay/unpay langsung terlihat di request berikutnya (cache RAM dulu yang
+// membuat "lunas balik sendiri" dan tulisan yang hilang tanpa error).
 
-async function compactLogs(snapshot, files) {
-  await writeJson(LOGS_DB, snapshot);
-  for (const f of files || []) {
-    try { await del(f.pathname, { token: TOKEN }); } catch (e) {}
-  }
+async function readPayments() {
+  return (await d1db.listPay(_rt.d1)) || {};
 }
 
-/** Baca semua log dari Blob (jalur lama: snapshot + file entry append-only). */
-async function readAllLogsBlob() {
-  const now = Date.now();
-  if (_logsReadAt && now - _logsReadAt < LOGS_MEM_TTL) {
-    return _logsMem.data.slice();
-  }
-
-  // 1) snapshot dasar
-  let merged = [];
-  const saved = await readJsonOrNull(LOGS_DB);
-  if (Array.isArray(saved)) {
-    merged = dedupeLogs(saved.map(enrichLog));
-  } else if (!(await isMigrated())) {
-    // migrasi sekali dari struktur lama logs/YYYY-MM-DD/*.json
-    try {
-      const legacy = await readMany(await listAllLogs());
-      if (legacy.length) {
-        try { await writeJson(LOGS_DB, legacy); } catch (e) { console.warn('migrasi logs gagal simpan:', e.message); }
-      }
-      await markMigrated();
-      merged = legacy.map(enrichLog);
-    } catch { merged = []; }
-  }
-
-  // 2) tambahkan file entry (simpan/hapus terbaru)
-  let files = [];
-  try {
-    files = await listAll(ENTRY_PREFIX);
-    if (files.length) {
-      const payloads = await readMany(files);
-      const added = [];
-      const deleted = new Set();
-      for (const p of payloads) {
-        if (!p) continue;
-        if (Array.isArray(p)) added.push(...p);
-        else if (Array.isArray(p.items)) added.push(...p.items);
-        if (Array.isArray(p.del)) p.del.forEach((id) => deleted.add(String(id)));
-      }
-      merged = dedupeLogs(merged.concat(added.map(enrichLog)));
-      if (deleted.size) merged = merged.filter((l) => !deleted.has(String(l.id_log || l.id || '')));
-    }
-  } catch (e) {
-    // kalau ada file yang gagal dibaca, JANGAN compaction: file itu bisa terhapus
-    // padahal isinya belum masuk snapshot.
-    console.warn('baca file entry gagal:', e.message);
-    files = [];
-  }
-
-  // 3) buang yang baru dihapus dari instance ini (blob bisa masih versi lama)
-  merged = merged.filter((l) => !isLogDeleted(l.id_log || l.id || ''));
-
-  _logsMem = { at: 0, data: merged };
-  _logsReadAt = now;
-
-  // 4) log lama yang belum ikut migrasi tetap diselamatkan
-  merged = await mergeLegacyStep(merged);
-
-  // 5) rapikan kalau file entry sudah menumpuk
-  if (files.length > 40 && !_compacting) {
-    _compacting = true;
-    compactLogs(merged, files)
-      .catch((e) => console.warn('compact logs gagal:', e.message))
-      .then(() => { _compacting = false; });
-  }
-  return merged;
-}
-
-/** Baca semua log dari Firestore: 1 query berhalaman, bukan N blob. */
-async function readAllLogsFS() {
-  const now = Date.now();
-  const docs = await fsdb.listAll('logs');
-  let merged = dedupeLogs(docs.map((d) => enrichLog(d.data || {})).filter((l) => l && l.nama));
-  merged = merged.filter((l) => !isLogDeleted(l.id_log || l.id || ''));
-  _logsMem = { at: 0, data: merged };
-  _logsReadAt = now;
-  return merged;
-}
-
-/** Baca semua log dari D1: 1 query berhalaman (1000/baris), bukan N blob. */
-async function readAllLogsD1() {
-  const now = Date.now();
-  const rows = await d1db.listLogs(_rt.d1);
-  let merged = dedupeLogs(rows.map((r) => enrichLog(r)).filter((l) => l && l.nama));
-  merged = merged.filter((l) => !isLogDeleted(l.id_log || l.id || ''));
-  _logsMem = { at: 0, data: merged };
-  _logsReadAt = now;
-  return merged;
-}
-
-/** Pintu baca log: RAM -> D1 / Firestore / Blob. */
-async function readAllLogsFast() {
-  const now = Date.now();
-  if (_logsReadAt && now - _logsReadAt < LOGS_MEM_TTL) return _logsMem.data.slice();
-  if (useD1()) return await readAllLogsD1();
-  if (useFS()) return await readAllLogsFS();
-  return await readAllLogsBlob();
-}
-
-/** Status merge log lama: { done, cursor } */
-let _legacyCache = null;
-async function legacyMergeDone() {
-  if (_legacyCache !== null) return _legacyCache;
-  try {
-    const v = await readJsonOrNull(LEGACY_MERGE_FLAG);
-    _legacyCache = !!(v && v.done);
-    return _legacyCache;
-  } catch { return false; }
-}
-
-/**
- * Gabungkan sisa blob lama logs/YYYY-MM-DD/*.json ke db/logs.json.
- * Dulu migrasi cuma jalan kalau db/logs.json BELUM ada, jadi kalau blob baru sudah
- * dibuat duluan (batch sync v32) log lama tidak pernah ikut -> export/XLSX cuma sebagian.
- * Sekarang jalan bertahap: 1 halaman (20 blob) per request, cursor disimpan di flag,
- * dan cursor tidak maju kalau ada blob yang gagal dibaca (biar tidak ada data hilang).
- */
-async function mergeLegacyStep(base) {
-  if (await legacyMergeDone()) return base;
-  try {
-    const state = (await readJsonOrNull(LEGACY_MERGE_FLAG)) || {};
-    const page = await list({ prefix: LOG_PREFIX, token: TOKEN, cursor: state.cursor || undefined, limit: 20 });
-    const blobs = page.blobs || [];
-    const got = [];
-    let failed = false;
-    for (const b of blobs) {
-      try { got.push(await readBlob(b.pathname)); } catch { failed = true; }
-    }
-    let out = base;
-    if (got.length) {
-      out = dedupeLogs(base.concat(got.map(enrichLog)));
-      await writeJson(LOGS_DB, out);
-    }
-    if (failed) return out; // ulangi halaman ini di request berikutnya
-    const done = !page.cursor;
-    await writeJson(LEGACY_MERGE_FLAG, { done, cursor: page.cursor || '', at: nowWIB() });
-    if (done) _legacyCache = true;
-    return out;
-  } catch (e) {
-    console.warn('merge legacy step:', e.message);
-    return base;
-  }
-}
-
-async function writeAllLogsFast(logs) {
-  if (useD1()) {
-    await d1db.replaceLogs(_rt.d1, logs || []);
-    _logsMem = { at: Date.now(), data: (logs || []).slice() };
-    _logsReadAt = Date.now();
-    return;
-  }
-  if (useFS()) {
-    await fsdb.replaceAll('logs', logs || [], (l) => l.id_log || l.id);
-    _logsMem = { at: Date.now(), data: (logs || []).slice() };
-    _logsReadAt = Date.now();
-    return;
-  }
-  // Snapshot penuh (dipakai dedupe & hapus semua): tulis dasar, lalu buang file entry.
-  let files = [];
-  try { files = await listAll(ENTRY_PREFIX); } catch (e) {}
-  await compactLogs(logs || [], files);
-  // write-through: instance ini langsung melihat datanya sendiri
-  _logsMem = { at: Date.now(), data: (logs || []).slice() };
-  _logsReadAt = Date.now();
+/** Tulis hanya yang berubah + hapus key yang dibuang (hemat tulis D1). */
+async function writePayments(map) {
+  const prev = (await d1db.listPay(_rt.d1)) || {};
+  const changed = [];
+  Object.keys(map).forEach((k) => {
+    if (JSON.stringify(map[k] || null) === JSON.stringify(prev[k] || null)) return;
+    const p = map[k];
+    if (p && p.tgl && p.stambuk) changed.push(p);
+  });
+  const removed = Object.keys(prev).filter((k) => !(k in map));
+  if (changed.length) await d1db.upsertPay(_rt.d1, changed);
+  if (removed.length) await d1db.deletePay(_rt.d1, removed);
 }
 
 function mergePayments(logs, payMap) {
@@ -653,55 +194,20 @@ function mergePayments(logs, payMap) {
   });
 }
 
-/** Database anggota / lis: pakai blob kalau sudah pernah diedit, kalau belum pakai seed */
+// ---------- master anggota / pengurus LIS ----------
+
+/** Tabel master: baris D1 (meta) kalau sudah pernah diedit, kalau belum pakai seed. */
 async function loadTable(table) {
-  const path = table === 'lis' ? DB_LIS : DB_ANGGOTA;
   const seed = table === 'lis' ? SEED_LIS : SEED_ANGGOTA;
-  if (useD1()) {
-    try {
-      const doc = await d1db.getMeta(_rt.d1, table);
-      if (doc && Array.isArray(doc.items) && doc.items.length) return doc.items;
-    } catch (e) { console.warn('meta d1:', e.message); }
-    return seed;
-  }
-  if (useFS()) {
-    try {
-      const doc = await fsdb.getDoc('meta', table);
-      if (doc && Array.isArray(doc.items) && doc.items.length) return doc.items;
-    } catch (e) { console.warn('meta firestore:', e.message); }
-  }
-  const saved = await readJsonOrNull(path);
-  if (Array.isArray(saved)) return saved;
+  try {
+    const doc = await d1db.getMeta(_rt.d1, table);
+    if (doc && Array.isArray(doc.items) && doc.items.length) return doc.items;
+  } catch (e) { console.warn('meta d1:', e.message); }
   return seed;
 }
 
-/** Simpan tabel master: Firestore (kalau aktif) + Blob sebagai cadangan. */
 async function saveTable(table, rows) {
-  if (useD1()) {
-    await d1db.setMeta(_rt.d1, table, { id: table, items: rows, at: Date.now() });
-    return;
-  }
-  if (useFS()) {
-    try { await fsdb.setDocs('meta', [{ id: table, items: rows, at: Date.now() }], (d) => d.id); }
-    catch (e) { console.warn('simpan meta firestore:', e.message); }
-  }
-  await writeJson(table === 'lis' ? DB_LIS : DB_ANGGOTA, rows);
-}
-
-/** Baca banyak blob paralel (dibatasi per batch biar nggak kena rate limit) */
-async function readMany(blobs) {
-  const out = [];
-  const CHUNK = 40;
-  for (let i = 0; i < blobs.length; i += CHUNK) {
-    const slice = blobs.slice(i, i + CHUNK);
-    const res = await Promise.all(
-      slice.map(async (b) => {
-        try { return await readBlob(b.pathname); } catch { return null; }
-      })
-    );
-    res.forEach((r) => { if (r) out.push(r); });
-  }
-  return out;
+  await d1db.setMeta(_rt.d1, table, { id: table, items: rows, at: Date.now() });
 }
 
 const handler = async (req, res) => {
@@ -736,13 +242,21 @@ const handler = async (req, res) => {
   // POST tanpa action = simpan absensi (kompatibel dengan frontend lama)
   if (!action && req.method === 'POST') action = 'save';
 
+  // Tanpa binding D1 tidak ada tempat menyimpan.
+  if (action !== 'ping' && !hasDb()) {
+    return send(res, 503, {
+      ok: false,
+      error: 'Database D1 belum terpasang di runtime ini (binding DB tidak ada)',
+      version: SERVER_VERSION,
+    });
+  }
+
   // ---------- GET ----------
   if (req.method === 'GET') {
     if (!action || action === 'ping') {
       return send(res, 200, {
-        ok: true, mode: 'vercel', version: SERVER_VERSION,
-        driver: driverName(),
-        dbReady: fsdb.ready(), ts: nowWIB(),
+        ok: true, mode: 'cloudflare', version: SERVER_VERSION,
+        driver: driverName(), dbReady: hasDb(), ts: nowWIB(),
       });
     }
 
@@ -764,7 +278,7 @@ const handler = async (req, res) => {
       const from = url.searchParams.get('from') || '';
       const to = url.searchParams.get('to') || '';
       try {
-        let data = await readAllLogsFast();
+        let data = await readAllLogs();
         if (from || to) {
           data = data.filter((l) => {
             const d = String(l.tgl || l.timestamp || '').slice(0, 10);
@@ -785,7 +299,7 @@ const handler = async (req, res) => {
     if (action === 'log') {
       const date = url.searchParams.get('date') || todayWIB();
       try {
-        const all = await readAllLogsFast();
+        const all = await readAllLogs();
         const data = all.filter(l => String(l.tgl || '').slice(0, 10) === date);
         const payMap = await readPayments();
         const merged = mergePayments(data, payMap);
@@ -796,13 +310,13 @@ const handler = async (req, res) => {
       }
     }
 
-    // BOOTSTRAP: gabung master + lis + logs + pay dalam satu request ( hemat 2 cold start )
+    // BOOTSTRAP: gabung master + lis + logs + pay dalam satu request (hemat cold start)
     if (action === 'bootstrap') {
       try {
         const [anggotaRes, lisRes, logsRes, payRes] = await Promise.all([
           loadTable('anggota').catch(() => SEED_ANGGOTA),
           loadTable('lis').catch(() => SEED_LIS),
-          readAllLogsFast().catch(() => []),
+          readAllLogs().catch(() => []),
           readPayments().catch(() => ({})),
         ]);
         const merged = mergePayments(logsRes, payRes);
@@ -825,7 +339,7 @@ const handler = async (req, res) => {
 
   // ---------- POST ----------
   if (req.method === 'POST') {
-    // Simpan banyak absensi sekaligus (batch — hemat blob ops)
+    // Simpan banyak absensi sekaligus (batch)
     if (action === 'save_bulk') {
       let items = body.items;
       if (typeof items === 'string') {
@@ -836,10 +350,7 @@ const handler = async (req, res) => {
       }
       try {
         return await withLogsLock(async () => {
-        // Cukup pakai cache RAM (write-through). Baca paksa dari blob = 1 list +
-        // N get tiap simpan; itu yang bikin web berat. Dedupe client_id tetap
-        // jalan karena simpan sebelumnya langsung masuk RAM.
-        const allLogs = await readAllLogsFast();
+        const allLogs = await readAllLogs();
         const added = [];
         for (const bodyItem of items) {
           if (!bodyItem.nama) continue;
@@ -872,9 +383,7 @@ const handler = async (req, res) => {
             : false;
           if (!dup) { allLogs.push(rec); added.push(rec); }
         }
-        await appendLogEntries(added);
-        _logsMem = { at: Date.now(), data: dedupeLogs((_logsMem.data || []).concat(added)) };
-        _logsReadAt = Date.now();
+        await appendLogs(added);
         // acked = client_id yang sudah pasti ada di server (baru atau sudah pernah
         // masuk). Klien pakai ini untuk memotong antrian, jadi tidak perlu membaca
         // ulang seluruh logs setelah menyimpan.
@@ -915,18 +424,15 @@ const handler = async (req, res) => {
         ucapan: body.ucapan || 'None',
       };
       try {
-        // Simpan ke store cepat (satu blob) — cek duplikat dulu
         return await withLogsLock(async () => {
-        const allLogs = await readAllLogsFast();
+        const allLogs = await readAllLogs();
         const cid = String(body.id || body.client_id || '');
         if (cid) rec.client_id = cid;
         const dup = cid ? allLogs.some(l => String(l.client_id || '') === cid) : false;
         if (dup) {
           return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date, skipped: true });
         }
-        await appendLogEntries([rec]);
-        _logsMem = { at: Date.now(), data: dedupeLogs((_logsMem.data || []).concat([rec])) };
-        _logsReadAt = Date.now();
+        await appendLogs([rec]);
         return send(res, 200, { ok: true, id_log: id, timestamp: ts, tgl: date });
         });
       } catch (err) {
@@ -948,11 +454,10 @@ const handler = async (req, res) => {
       }
       try {
         return await withPayLock(async () => {
-        const payMap = await readPaymentsFresh();
+        const payMap = await readPayments();
         const key = `${tgl}__${payKey}`;
         if (action === 'unpay') {
           delete payMap[key];
-          markPayDeleted(key);
         } else {
           payMap[key] = {
             tgl,
@@ -989,7 +494,7 @@ const handler = async (req, res) => {
       const tglLunas = body.tgl_lunas || todayWIB();
       try {
         return await withPayLock(async () => {
-        const payMap = await readPaymentsFresh();
+        const payMap = await readPayments();
         for (const it of items) {
           const tgl = String(it.tgl || '').trim();
           const stambuk = String(it.stambuk || '').trim();
@@ -1030,7 +535,7 @@ const handler = async (req, res) => {
       }
       try {
         return await withPayLock(async () => {
-        const payMap = await readPaymentsFresh();
+        const payMap = await readPayments();
         const key = `${tgl}__${payKey}`;
         const existing = payMap[key] || { tgl, stambuk: payKey, nama: body.nama || '', lunas: false, hidden: false };
         existing.hidden = !existing.hidden;
@@ -1050,7 +555,7 @@ const handler = async (req, res) => {
       }
     }
 
-    // Set hidden untuk BANYAK tagihan sekaligus — 1 tulis (hemat Advanced ops).
+    // Set hidden untuk BANYAK tagihan sekaligus — 1 tulis.
     // body: { items: [{ tgl, stambuk, nama }], hidden: true|false, password, penerima }
     if (action === 'hidden_bulk') {
       if (!isAdmin(body.password)) {
@@ -1061,7 +566,7 @@ const handler = async (req, res) => {
       if (!items.length) return send(res, 400, { ok: false, error: 'items kosong' });
       try {
         return await withPayLock(async () => {
-        const payMap = await readPaymentsFresh();
+        const payMap = await readPayments();
         let changed = 0;
         for (const it of items) {
           const tgl = String(it.tgl || '').trim();
@@ -1094,7 +599,7 @@ const handler = async (req, res) => {
       }
       try {
         return await withLogsLock(async () => {
-        const allLogs = await readLogsFresh();
+        const allLogs = await readAllLogs();
         const key = (l) => [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa, (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
         // Kumpulkan key dari batch asli (terlama per grup) — jangan hapus record asli
         const sorted = [...allLogs].sort((a, b) =>
@@ -1106,7 +611,7 @@ const handler = async (req, res) => {
         for (const l of sorted) {
           if (firstSeen.get(key(l)) === l) deduped.push(l);
         }
-        await writeAllLogsFast(deduped);
+        await replaceLogs(deduped);
         return send(res, 200, { ok: true, before: allLogs.length, after: deduped.length, removed: allLogs.length - deduped.length });
         });
       } catch (err) {
@@ -1122,16 +627,12 @@ const handler = async (req, res) => {
       const id = String(body.id_log || body.id || '').trim();
       if (!id) return send(res, 400, { ok: false, error: 'id_log wajib diisi' });
       try {
-        // hapus dari store cepat
         return await withLogsLock(async () => {
-        const allLogs = await readLogsFresh();
-        const removed = allLogs.filter((l) => (l.id_log || l.id) !== id);
-        if (removed.length === allLogs.length) return send(res, 404, { ok: false, error: 'Log tidak ditemukan' });
-        await appendLogDeletes([id]);
-        markLogDeleted(id);
-        _logsMem = { at: Date.now(), data: removed };
-        _logsReadAt = Date.now();
-        return send(res, 200, { ok: true, deleted: allLogs.length - removed.length });
+        const allLogs = await readAllLogs();
+        const exists = allLogs.some((l) => (l.id_log || l.id) === id);
+        if (!exists) return send(res, 404, { ok: false, error: 'Log tidak ditemukan' });
+        await deleteLogs([id]);
+        return send(res, 200, { ok: true, deleted: 1 });
         });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menghapus log: ' + err.message });
@@ -1186,13 +687,7 @@ const handler = async (req, res) => {
         return send(res, 401, { ok: false, error: 'Password admin salah' });
       }
       try {
-        // Sumber utama: db/logs.json — di sinilah SEMUA log sekarang disimpan.
-        // (Bug lama: export cuma baca blob legacy logs/YYYY-MM-DD/*, jadi cuma sebagian.)
-        let data = await readAllLogsFast();
-        // Selesaikan merge log lama dulu (bertahap, maks 25 halaman per klik export)
-        for (let i = 0; i < 25 && !(await legacyMergeDone()); i++) {
-          data = await mergeLegacyStep(data);
-        }
+        const data = await readAllLogs();
         const payMap = await readPayments();
         const merged = mergePayments(data, payMap);
         merged.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
@@ -1202,50 +697,14 @@ const handler = async (req, res) => {
       }
     }
 
-    // Salin SEMUA data dari Blob ke Firestore (sekali jalan, aman diulang)
-    if (action === 'migrate_firestore') {
-      if (!isStrictAdmin(body.password)) {
-        return send(res, 401, { ok: false, error: 'Password admin salah (migrasi wajib Server Pass)' });
-      }
-      if (!fsdb.ready()) {
-        return send(res, 400, { ok: false, error: 'GOOGLE_SA_JSON / project Firestore belum diset di env Vercel' });
-      }
-      try {
-        // Baca sumber dari Blob, bukan cache Firestore.
-        _logsMem = { at: 0, data: [] };
-        _logsReadAt = 0;
-        _payMem = null;
-        _payAt = 0;
-        const logs = await readAllLogsBlob();
-        const payMap = await readPaymentsBlob();
-        const payDocs = Object.keys(payMap).map((k) => payMap[k]).filter((p) => p && p.tgl && p.stambuk);
-        const nLogs = await fsdb.replaceAll('logs', logs, (l) => l.id_log || l.id);
-        const nPay = await fsdb.replaceAll('pay', payDocs, (p) => `${p.tgl}__${p.stambuk}`);
-        const anggota = await loadTable('anggota');
-        const lis = await loadTable('lis');
-        await fsdb.setDocs('meta', [
-          { id: 'anggota', items: anggota, at: Date.now() },
-          { id: 'lis', items: lis, at: Date.now() },
-        ], (d) => d.id);
-        const check = await fsdb.listAll('logs');
-        return send(res, 200, {
-          ok: true, logs: nLogs, pay: nPay,
-          anggota: anggota.length, lis: lis.length,
-          fsCount: check.length, verified: check.length === logs.length,
-        });
-      } catch (err) {
-        return send(res, 500, { ok: false, error: 'Migrasi gagal: ' + err.message });
-      }
-    }
-
     // Salinan mentah semua data (tanpa gabung status bayar) — dipakai skrip
-    // migrasi ke D1 / cadangan manual.
+    // migrasi / cadangan manual.
     if (action === 'dump') {
       if (!isAdmin(body.password)) {
         return send(res, 401, { ok: false, error: 'Password admin salah' });
       }
       try {
-        const logs = await readAllLogsFast();
+        const logs = await readAllLogs();
         const payMap = await readPayments();
         const anggota = await loadTable('anggota');
         const lis = await loadTable('lis');
@@ -1263,9 +722,6 @@ const handler = async (req, res) => {
       if (!isStrictAdmin(body.password)) {
         return send(res, 401, { ok: false, error: 'Password admin salah (migrasi wajib Server Pass)' });
       }
-      if (!useD1()) {
-        return send(res, 400, { ok: false, error: 'Binding D1 tidak ada di runtime ini' });
-      }
       try {
         const logs = Array.isArray(body.logs) ? body.logs : [];
         const payMap = body.pay && typeof body.pay === 'object' ? body.pay : {};
@@ -1278,10 +734,6 @@ const handler = async (req, res) => {
         if (Array.isArray(body.lis) && body.lis.length) {
           await d1db.setMeta(_rt.d1, 'lis', { id: 'lis', items: body.lis, at: Date.now() });
         }
-        _logsMem = { at: 0, data: [] };
-        _logsReadAt = 0;
-        _payMem = null;
-        _payAt = 0;
         const check = await d1db.listLogs(_rt.d1);
         return send(res, 200, {
           ok: true, logs: nLogs, pay: nPay,
@@ -1298,53 +750,8 @@ const handler = async (req, res) => {
         return send(res, 401, { ok: false, error: 'Password admin salah (Hapus Semua Data wajib Server Pass)' });
       }
       try {
-        // 0) Buang cache RAM instance ini dulu — kalau tidak, cache bisa
-        //    "membangkitkan" log yang baru dihapus sampai TTL habis.
-        _logsMem = { at: 0, data: [] };
-        _logsReadAt = 0;
-        _lastDedupeAt = 0;
-        _payMem = null;
-        _payAt = 0;
-        _logsDel.clear();
-        if (useD1()) {
-          let cleared = 0;
-          try { cleared += await d1db.clearAll(_rt.d1); } catch (e) { console.warn('clear d1:', e.message); }
-          return send(res, 200, { ok: true, mode: 'd1', cleared, deleted: 0 });
-        }
-        if (useFS()) {
-          // Firestore aktif: kosongkan dokumen log + status bayar, Blob cuma cadangan.
-          let clearedFS = 0;
-          try { clearedFS += await fsdb.clearCollection('logs'); } catch (e) { console.warn('clear fs logs:', e.message); }
-          try { clearedFS += await fsdb.clearCollection('pay'); } catch (e) { console.warn('clear fs pay:', e.message); }
-          try { await writeJson(LOGS_DB, []); } catch (e) { console.warn('clear snapshot blob:', e.message); }
-          return send(res, 200, { ok: true, mode: 'firestore', cleared: clearedFS, deleted: 0 });
-        }
-        // 1) Kosongkan store baru (satu blob) + buang file entry append-only
-        let cleared = 0;
-        try { await writeJson(LOGS_DB, []); cleared++; } catch (e) { console.warn('clear logs:', e.message); }
-        try {
-          const entryFiles = await listAll(ENTRY_PREFIX);
-          if (entryFiles.length) {
-            await del(entryFiles.map((b) => b.pathname), { token: TOKEN });
-            cleared += entryFiles.length;
-          }
-        } catch (e) { console.warn('clear entry:', e.message); }
-        try { await writeJson('db/pay.json', {}); cleared++; } catch (e) { console.warn('clear pay:', e.message); }
-        // 2) Hapus sisa blob lama (logs/YYYY-MM-DD/*, pay/*) — skip kalau sudah migrated
-        let deleted = 0;
-        if (!await isMigrated()) {
-          try {
-            const blobs = await listAllLogs();
-            const payBlobs = await listAll(PAY_PREFIX);
-            const all = blobs.concat(payBlobs);
-            if (all.length) {
-              await del(all.map((b) => b.pathname), { token: TOKEN });
-              deleted = all.length;
-            }
-            await markMigrated();
-          } catch (e) { console.warn('clear legacy:', e.message); }
-        }
-        return send(res, 200, { ok: true, cleared, deleted });
+        const cleared = await d1db.clearAll(_rt.d1);
+        return send(res, 200, { ok: true, mode: 'd1', cleared, deleted: 0 });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal hapus: ' + err.message });
       }
