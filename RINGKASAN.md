@@ -567,3 +567,19 @@ npm run db:init         # bikin tabel kalau kosong
 npm run db:seed         # isi ulang master/LIS dari db/seed-master.sql
 npm run dev             # server lokal 8788 + D1 lokal
 ```
+
+### 17 Nov 2026 — v55-v57: zoom out 22% (desktop) + HP lebih rapi
+
+Skala tampilan diatur lewat `font-size` root (Tailwind pakai rem, jadi teks, padding, gap, lebar komponen ikut mengecil proporsional):
+
+| Layar | `html` font-size | Efek |
+|---|---|---|
+| Desktop ≥769px | `78%` (12.48px) | zoom out 22% |
+| HP ≤768px | `14px` (dari 15px) | lebih lega, tidak mepet |
+| HP ≤400px | `13.5px` (dari 14px) | ekstra kecil |
+
+Penyesuaian pendukung:
+- `.max-w-7xl` → `118rem` di desktop, supaya layar lebar tetap terpakai (bukan kolom sempit di tengah).
+- Token `--muted` didefinisikan (sebelumnya dipakai di HTML tapi tidak pernah ada nilainya).
+- HP: judul topbar 1 baris + ellipsis, tombol ikon 38px seragam, padding kartu seragam, tombol mode input full-width, filter tagihan jadi 2 kolom (dropdown terakhir full width), modal/popup maks 90-96vw.
+- Diverifikasi: 6 halaman × 2 viewport (1440×900, 390×844) — `scrollWidth == innerWidth` di semua kombinasi, nol overflow horizontal.

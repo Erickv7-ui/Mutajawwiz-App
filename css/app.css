@@ -23,6 +23,7 @@
       --shadow-hover: 4.5px 4.5px 0px rgba(26, 26, 26, 0.9);
       --radius-card: 10px;
       --radius-ctl: 8px;
+      --muted: #4A4A4A;
     }
 
     html {
@@ -646,3 +647,66 @@
   #bulk-bar input[type=checkbox] { margin-right: 0.15rem; }
   .overflow-x-auto { -webkit-overflow-scrolling: touch; }
 }
+
+
+/* ===================================================================
+   SKALA TAMPILAN — zoom out ±22% (desktop) + HP lebih rapi & lega
+   Tailwind pakai satuan rem, jadi menurunkan font-size html ikut
+   mengecilkan teks, padding, gap, dan lebar komponen sekaligus.
+   Blok ini ditaruh paling bawah supaya menimpa aturan sebelumnya.
+   =================================================================== */
+@media (min-width: 769px) {
+  html { font-size: 78%; }                 /* 16px -> 12.48px = zoom out 22% */
+  .max-w-7xl { max-width: 118rem !important; }  /* kolom konten dilebarkan, layar lebar tetap kepake */
+  main { padding-top: 1.5rem !important; padding-bottom: 2rem !important; }
+}
+
+@media (max-width: 768px) {
+  html { font-size: 14px; }                /* sebelumnya 15px */
+
+  /* --- header: judul 1 baris, tombol ikon seragam & tidak berdempet --- */
+  header { padding: 0.5rem 0.6rem !important; }
+  header .max-w-7xl { gap: 0.3rem !important; }
+  header .flex.items-center.gap-2\.5 { gap: 0.3rem !important; }
+  header .btn { min-width: 38px; min-height: 38px; padding: 0.22rem !important; }
+  #topbar-breadcrumb {
+    font-size: 0.8rem !important;
+    max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #topbar-pill { font-size: 0.6rem !important; padding: 0.12rem 0.35rem !important; }
+
+  /* --- area konten --- */
+  main { padding: 0.7rem 0.65rem 1.6rem !important; }
+
+  /* --- judul halaman + tombol aksi: tombol selebar kartu, tidak sempit --- */
+  section.page > div:first-child { padding: 0.65rem 0.7rem !important; gap: 0.45rem !important; }
+  .mode-switch { width: 100%; }
+  .mode-switch .btn { flex: 1 1 0; min-height: 42px; }
+
+  /* --- padding kartu seragam --- */
+  .p-6 { padding: 0.8rem !important; }
+  .p-5 { padding: 0.65rem !important; }
+  .box-flat { padding: 0.6rem !important; }
+  .card-band { padding: 0.5rem 0.65rem !important; }
+
+  /* --- modal & popup pas di layar HP --- */
+  #info-popup { padding: 0.5rem !important; }
+  #info-modal-card { max-height: 90vh !important; padding: 0.9rem !important; }
+  .modal-card { max-width: 96vw !important; }
+
+  /* --- tabel: kolom pertama lega, scroll tetap halus --- */
+  table.tbl th:first-child, table.tbl td:first-child { padding-left: 0.5rem !important; }
+}
+
+@media (max-width: 400px) {
+  html { font-size: 13.5px; }
+  header .btn { min-width: 36px; min-height: 36px; }
+}
+
+/* filter tagihan di HP: cari selebar kartu, dropdown 2 kolom biar tidak panjang ke bawah */
+@media (max-width: 768px) {
+  div[class*="lg:grid-cols-6"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  div[class*="lg:grid-cols-6"] > #tag-search { grid-column: 1 / -1; }
+  div[class*="lg:grid-cols-6"] > .btn { grid-column: 1 / -1; min-height: 42px; }
+}
+  div[class*="lg:grid-cols-6"] > select:last-of-type { grid-column: 1 / -1; }
