@@ -138,3 +138,10 @@ Data yang masuk saat di Cloudflare tidak otomatis balik — jalankan `dump` dari
 - Pages: 100.000 request/hari (Functions), bandwidth statis tak dibatasi.
 - D1: 5 juta baris dibaca/hari, 100.000 baris ditulis/hari, 5 GB penyimpanan.
 - Pemakaian nyata aplikasi ini: ~1.000 baris/hari. Jauh di bawah batas.
+
+## v53 (17 November 2026) — pindah total, nol Vercel
+
+- Repo tidak lagi punya `vercel.json` maupun dependency `@vercel/blob`; satu-satunya jalur deploy: `npx wrangler pages deploy dist --project-name mutajawwiz --branch main`.
+- Zona `experimentlynss.my.id` (full setup, NS `bonnie`/`carlos`) isinya: CAA x3, CNAME `@`/`www`/`*` -> `mutajawwiz.pages.dev` proxied.
+- Bukti www sudah di Cloudflare (DNS publik): `https://dns.google/resolve?name=www.experimentlynss.my.id&type=A` -> 104.21.1.175 / 172.67.129.171.
+- Endpoint cek cepat: `/api?action=ping` harus balas `version v53`, `driver d1`, `dbReady true`.

@@ -516,3 +516,11 @@ device itu dan belum masuk server.
 - Uji lokal `wrangler pages dev`: ping v52 driver d1, save/duplikat/dobel-sengaja,
   save_bulk, logs, pay/unpay, hidden_bulk, bootstrap (724 master/28 lis), export,
   dump, deleteLog — semua 200.
+
+### 17 Nov 2026 — v53: Vercel dibuang total, semua di Cloudflare + D1
+
+- `vercel.json` dihapus dari repo; dependency `@vercel/blob` dicabut dari `package.json` + `package-lock.json` (kode tidak memakainya) -> nol sisa Vercel di proyek.
+- `SERVER_VERSION` naik ke `v53`, cache-busting `?v=53` (9 file) supaya browser ambil build baru.
+- DNS zona `experimentlynss.my.id` bersih: CNAME `www`, `@`, `*` -> `mutajawwiz.pages.dev` (proxied). Record `_domainconnect.vercel-dns.com` (sisa Vercel) dihapus, record uji (`webtest`, TXT `zonetest-*`) dihapus.
+- `www.experimentlynss.my.id` **terverifikasi jalan lewat Cloudflare** dari DNS publik (Google DoH: 104.21.1.175 / 172.67.129.171). Jawaban "IP Vercel" sebelumnya cuma cache resolver lokal/ISP, bukan masalah DNS.
+- Fitur lama tidak disentuh: pengabsen wajib + auto-kosong (satuan & massal), hidden bulk, filter tanggal/status/rayon tagihan, ekspor XLSX urut kelas tertinggi + tanggal tanpa jam, hapus data wajib server password, popup info awal, anti-dobel dimatikan, backend cuma D1.
