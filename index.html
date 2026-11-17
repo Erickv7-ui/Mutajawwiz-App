@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=58">
-  <link rel="stylesheet" href="css/theme.css?v=58">
+  <link rel="stylesheet" href="css/app.css?v=60">
+  <link rel="stylesheet" href="css/theme.css?v=60">
   <script>
     /* Terapkan tema sebelum paint supaya tidak berkedip */
     (function () {
@@ -30,13 +30,23 @@
     })();
   </script>
   
+  <!-- gerbang login: dicek sebelum body dilukis, supaya konten tidak sempat berkedip -->
+  <script>
+    (function () {
+      try {
+        var until = parseInt(localStorage.getItem('lis2627_authed_until') || '0', 10) || 0;
+        var tab = sessionStorage.getItem('lis2627_authed') === '1';
+        if (tab || until > Date.now()) document.documentElement.classList.add('authed');
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body class="min-h-screen flex text-black">
 
   <!-- ========================================================= -->
   <!-- LOGIN GATE                                                -->
   <!-- ========================================================= -->
-  <div id="login-gate" class="hidden">
+  <div id="login-gate">
     <div class="gate-card">
       <div class="gate-title">MUTAJAWWIZ LUGHOH</div>
       <div class="gate-sub">Masukkan password untuk mengakses dashboard</div>
@@ -46,7 +56,7 @@
       <div id="gate-error" class="gate-error hidden"></div>
       <button id="gate-btn" class="gate-btn" type="button">Login</button>
 
-      <div class="gate-hint">Password default: <code>123456</code></div>
+      <div class="gate-hint" id="gate-hint">Password default: <code>123456</code></div>
 
       <span id="gate-toggle-change" class="gate-toggle">Ganti Password</span>
 
@@ -1220,12 +1230,12 @@
     </div>
   </div>
 
-  <script src="js/api.js?v=58"></script>
-  <script src="js/xlsx-writer.js?v=58"></script>
-  <script src="js/rekap.js?v=58"></script>
-  <script src="js/theme.js?v=58"></script>
-  <script src="js/db.js?v=58"></script>
-  <script src="js/auth.js?v=58"></script>
-  <script src="js/spa.js?v=58"></script>
+  <script src="js/api.js?v=60"></script>
+  <script src="js/xlsx-writer.js?v=60"></script>
+  <script src="js/rekap.js?v=60"></script>
+  <script src="js/theme.js?v=60"></script>
+  <script src="js/db.js?v=60"></script>
+  <script src="js/auth.js?v=60"></script>
+  <script src="js/spa.js?v=60"></script>
 </body>
 </html>

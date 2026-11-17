@@ -583,3 +583,18 @@ Penyesuaian pendukung:
 - Token `--muted` didefinisikan (sebelumnya dipakai di HTML tapi tidak pernah ada nilainya).
 - HP: judul topbar 1 baris + ellipsis, tombol ikon 38px seragam, padding kartu seragam, tombol mode input full-width, filter tagihan jadi 2 kolom (dropdown terakhir full width), modal/popup maks 90-96vw.
 - Diverifikasi: 6 halaman × 2 viewport (1440×900, 390×844) — `scrollWidth == innerWidth` di semua kombinasi, nol overflow horizontal.
+
+### 17 Nov 2026 — v59-v60: hilang kedip konten sebelum gerbang login + sesi 30 hari
+
+Keluhan: tiap buka web, dashboard sempat kelihatan sekejap lalu baru muncul halaman password.
+
+Penyebab: `#login-gate` punya class `hidden` di HTML, jadi konten sudah dilukis dulu; gerbang baru ditampilkan setelah `js/auth.js` jalan di akhir body.
+
+Perbaikan:
+- Gerbang login **tampil sejak lukisan pertama** (class `hidden` dibuang dari markup, `#login-gate{display:flex}` di CSS, `html:not(.authed) body{overflow:hidden}`).
+- Script kecil di `<head>` (render-blocking, jalan sebelum body) menambah class `authed` ke `<html>` kalau sesi masih valid → pengguna yang sudah login tidak melihat gerbang sama sekali.
+- `gate(true/false)` di `js/auth.js` sekarang juga mengatur class `authed`, jadi tampil/sembunyi selalu konsisten.
+- Sesi login diperpanjang: `sessionStorage` (per tab) + `localStorage['lis2627_authed_until']` = **30 hari**, jadi tidak perlu mengetik password tiap buka web. Logout / "Bersihkan Cache" menghapus keduanya.
+- Hint "Password default: 123456" otomatis disembunyikan setelah password diganti.
+
+Verifikasi (Edge headless, profil bersih, 3 skenario): tanpa sesi → gerbang `display:flex`, `z-index 9999`, menutup seluruh viewport, `elementFromPoint` = area gerbang, body terkunci; sesi valid → gerbang `display:none`, `html.authed`, dashboard tampil; sesi kedaluwarsa → gerbang tampil lagi. Hasil: LULUS.

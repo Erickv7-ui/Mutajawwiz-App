@@ -18,7 +18,7 @@ function driverName() { return 'd1'; }
 function hasDb() { return !!_rt.d1; }
 
 // versi kode server — dipakai untuk memastikan deploy sudah jalan
-const SERVER_VERSION = 'v58';
+const SERVER_VERSION = 'v60';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
 // PIN Pusat (dipakai UI untuk buka sesi admin). Server menerima PIN ini juga

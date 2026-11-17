@@ -4,6 +4,8 @@
 
   var PASS_KEY = 'lis2627_web_pass_v2';
   var AUTH_KEY = 'lis2627_authed';
+  var UNTIL_KEY = 'lis2627_authed_until';   // sesi panjang (localStorage), biar tidak login tiap buka
+  var SESSION_DAYS = 30;
   var DEFAULT_PASS = '123456';
 
   /* Hash sederhana, tidak butuh crypto.subtle (aman di http/file://) */
@@ -31,16 +33,37 @@
 
   function gate(on) {
     var g = $('login-gate');
-    if (!g) return;
+    var root = document.documentElement;
     if (on) {
-      g.classList.remove('hidden');
-      g.style.display = 'flex';
+      if (root) root.classList.remove('authed');
+      if (g) { g.classList.remove('hidden'); g.style.display = 'flex'; }
       document.body.style.overflow = 'hidden';
     } else {
-      g.classList.add('hidden');
-      g.style.display = 'none';
+      if (root) root.classList.add('authed');
+      if (g) { g.classList.add('hidden'); g.style.display = 'none'; }
       document.body.style.overflow = '';
     }
+  }
+
+  function isAuthed() {
+    try {
+      if (sessionStorage.getItem(AUTH_KEY) === '1') return true;
+      var until = parseInt(localStorage.getItem(UNTIL_KEY) || '0', 10) || 0;
+      return until > Date.now();
+    } catch (e) { return false; }
+  }
+
+  function saveAuthed() {
+    try { sessionStorage.setItem(AUTH_KEY, '1'); } catch (e) {}
+    try {
+      localStorage.setItem(UNTIL_KEY, String(Date.now() + SESSION_DAYS * 864e5));
+      localStorage.setItem(AUTH_KEY, '1');
+    } catch (e) {}
+  }
+
+  function clearAuthed() {
+    try { sessionStorage.removeItem(AUTH_KEY); } catch (e) {}
+    try { localStorage.removeItem(UNTIL_KEY); localStorage.removeItem(AUTH_KEY); } catch (e) {}
   }
 
   function setErr(msg) {
@@ -60,7 +83,7 @@
         setErr('Password salah.');
         if (inp) { inp.value = ''; inp.focus(); }
       } else {
-        try { sessionStorage.setItem(AUTH_KEY, '1'); } catch (e) {}
+        saveAuthed();
         setErr('');
         gate(false);
       }
@@ -97,16 +120,20 @@
     var g = $('login-gate');
     if (!g) return;
 
-    var already = false;
-    try { already = sessionStorage.getItem(AUTH_KEY) === '1'; } catch (e) {}
-    gate(!already);
+    gate(!isAuthed());
+
+    // hint "password default" cuma relevan kalau password belum pernah diganti
+    try {
+      var hint = $('gate-hint');
+      if (hint && storedHash() !== hash(DEFAULT_PASS)) hint.style.display = 'none';
+    } catch (e) {}
 
     // Reset password darurat: buka web dengan ?resetpass=1
     try {
       var qp = new URLSearchParams(location.search);
       if (qp.get('resetpass') === '1') {
         localStorage.removeItem(PASS_KEY);
-        try { sessionStorage.removeItem(AUTH_KEY); } catch (e) {}
+        clearAuthed();
         gate(true);
       }
     } catch (e) {}
@@ -134,8 +161,8 @@
   }
 
   window.LISAuth = {
-    logout: function () { try { sessionStorage.removeItem(AUTH_KEY); } catch (e) {} location.reload(); },
-    reset: function () { try { localStorage.removeItem(PASS_KEY); sessionStorage.removeItem(AUTH_KEY); } catch (e) {} location.reload(); }
+    logout: function () { clearAuthed(); location.reload(); },
+    reset: function () { try { localStorage.removeItem(PASS_KEY); } catch (e) {} clearAuthed(); location.reload(); }
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -710,3 +710,9 @@
   div[class*="lg:grid-cols-6"] > .btn { grid-column: 1 / -1; min-height: 42px; }
 }
   div[class*="lg:grid-cols-6"] > select:last-of-type { grid-column: 1 / -1; }
+
+/* gerbang login: default TAMPIL (konten tidak sempat berkedip sebelum gate muncul).
+   Kalau sesi masih valid, inline script di <head> menambah class "authed" sebelum body dilukis. */
+#login-gate { display: flex; }
+html.authed #login-gate { display: none !important; }
+html:not(.authed) body { overflow: hidden !important; }

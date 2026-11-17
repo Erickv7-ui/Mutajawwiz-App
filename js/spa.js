@@ -2142,7 +2142,7 @@
           'Cache lokal (log, database anggota/LIS, antrian sync, tarif, PIN, sesi) akan dibuang lalu ambil ulang dari cloud. Halaman dimuat ulang.',
           () => {
             try {
-              ['lis2627_logs_v3','lis2627_tarif_v2','lis2627_admin_pin','lis2627_api_url','lis2627_info_seen','lis2627_authed',
+              ['lis2627_logs_v3','lis2627_tarif_v2','lis2627_admin_pin','lis2627_api_url','lis2627_info_seen','lis2627_authed','lis2627_authed_until',
                'lis2627_master_cache','lis2627_lis_cache','lis2627_pending_v1','lis2627_admin_session_unlocked'].forEach(k => {
                 try { localStorage.removeItem(k); } catch(e){}
                 try { sessionStorage.removeItem(k); } catch(e){}
