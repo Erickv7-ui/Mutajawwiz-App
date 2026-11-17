@@ -12,8 +12,9 @@ Browser → Cloudflare Pages (index.html, css, js)
         → D1 "mutajawwiz"  (tabel logs, pay, meta)
 ```
 
-`api/index.js` tetap satu-satunya backend. Driver database dipilih otomatis:
-binding `env.DB` ada → `d1`; `DB_DRIVER=firestore` → Firestore; selain itu → Blob lama.
+`api/index.js` tetap satu-satunya backend. Driver database cuma satu: Cloudflare
+D1 (SQLite). Kalau binding `env.DB` tidak ada, server menjawab 503 dengan pesan
+jelas — tidak ada lagi jalur cadangan Blob / Firestore / file JSON.
 
 ## Status deploy (17 November 2026)
 
@@ -27,13 +28,18 @@ Sudah jalan:
   53 status lunas. `GET /api?action=logs` = 121.
 - Uji di produksi: save, save_bulk 8 paralel (8/8 masuk), pay/unpay, hidden_bulk,
   deleteLog, export — semua 200. `logs` ~130 ms, `bootstrap` ~240 ms (colo SIN).
-- Custom domain `www.experimentlynss.my.id` sudah ditambahkan ke project, status
-  `initializing` — menunggu nameserver domain pindah ke Cloudflare.
+- Nameserver domain **sudah pindah** ke `bonnie.ns.cloudflare.com` +
+  `carlos.ns.cloudflare.com`; zona `experimentlynss.my.id` status **active**.
+- Custom domain `www.experimentlynss.my.id` dan apex `experimentlynss.my.id`
+  sudah terdaftar di project Pages (status `initializing`).
 
-Belum: pindah nameserver di cloudhost.id. Domain tidak punya record MX/TXT, jadi
-tidak ada email yang perlu dibuat ulang di Cloudflare. Record yang perlu ada:
-`www` (CNAME ke `mutajawwiz.pages.dev`, proxy aktif) dan apex
-`experimentlynss.my.id` (lewat custom domain Pages).
+Sisa: record DNS masih menunjuk IP Vercel (`www` A → `64.29.17.x` / `216.198.79.x`),
+jadi Pages belum bisa verifikasi domain. Yang perlu diubah di zona:
+
+- `www` → CNAME `mutajawwiz.pages.dev`, proxy aktif.
+- apex `experimentlynss.my.id` → CNAME/AAAA sesuai yang ditampilkan Pages.
+- hapus A record lama yang menunjuk Vercel.
+
 
 ## 1. Akun & alat
 
