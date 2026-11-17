@@ -524,3 +524,12 @@ device itu dan belum masuk server.
 - DNS zona `experimentlynss.my.id` bersih: CNAME `www`, `@`, `*` -> `mutajawwiz.pages.dev` (proxied). Record `_domainconnect.vercel-dns.com` (sisa Vercel) dihapus, record uji (`webtest`, TXT `zonetest-*`) dihapus.
 - `www.experimentlynss.my.id` **terverifikasi jalan lewat Cloudflare** dari DNS publik (Google DoH: 104.21.1.175 / 172.67.129.171). Jawaban "IP Vercel" sebelumnya cuma cache resolver lokal/ISP, bukan masalah DNS.
 - Fitur lama tidak disentuh: pengabsen wajib + auto-kosong (satuan & massal), hidden bulk, filter tanggal/status/rayon tagihan, ekspor XLSX urut kelas tertinggi + tanggal tanpa jam, hapus data wajib server password, popup info awal, anti-dobel dimatikan, backend cuma D1.
+
+### 17 Nov 2026 — v54: master + LIS jadi tabel SQL betulan, JSON terakhir dihapus
+
+- Tabel D1 baru: `anggota(id, nama, kelas, stambuk, rayon, status, data)` dan `lis(id, nama, kelas, stambuk, section, status, data)`. Kolom asli bisa di-query pakai SQL; `data` tetap JSON utuh per baris supaya field tambahan (kamar, tingkat, alamat, ...) tidak hilang.
+- `data/master.json` + `data/lis.json` **dihapus dari repo**; isinya dipindah ke `db/seed-master.sql` (752 baris INSERT) lalu dijalankan sekali ke D1. `api/index.js` tidak lagi `require` file JSON apa pun.
+- Frontend tidak fetch `data/*.json` lagi: master/LIS diambil dari API (`bootstrap`, `master`, `lis`) dengan cache localStorage sebagai fallback offline.
+- CRUD master/LIS (`db-save`/`db-delete`) sekarang menulis satu baris (`INSERT OR REPLACE` / `DELETE`) — bukan baca-semua lalu tulis ulang.
+- `scripts/build-static.js` tidak menyalin folder `data` lagi. Versi `v54`, `?v=54` (9 file).
+- Hasil cek D1 setelah migrasi: anggota 724, lis 28, logs 121, pay 62.

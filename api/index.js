@@ -1,7 +1,5 @@
 const { randomBytes } = require('crypto');
 const d1db = require('../lib/store-d1');
-const SEED_ANGGOTA = require('../data/master.json');
-const SEED_LIS = require('../data/lis.json');
 
 // ---------- runtime ----------
 // Satu-satunya backend: Cloudflare D1 (SQLite). Binding `DB` dikirim adapter
@@ -20,7 +18,7 @@ function driverName() { return 'd1'; }
 function hasDb() { return !!_rt.d1; }
 
 // versi kode server — dipakai untuk memastikan deploy sudah jalan
-const SERVER_VERSION = 'v53';
+const SERVER_VERSION = 'v54';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
 // PIN Pusat (dipakai UI untuk buka sesi admin). Server menerima PIN ini juga
@@ -196,18 +194,13 @@ function mergePayments(logs, payMap) {
 
 // ---------- master anggota / pengurus LIS ----------
 
-/** Tabel master: baris D1 (meta) kalau sudah pernah diedit, kalau belum pakai seed. */
+/**
+ * Tabel master dibaca dari tabel SQL `anggota` / `lis` (kolom nama, kelas,
+ * stambuk, rayon/section, status + JSON utuh di kolom `data`).
+ * Tidak ada lagi file JSON / seed di repo: sumber data cuma D1.
+ */
 async function loadTable(table) {
-  const seed = table === 'lis' ? SEED_LIS : SEED_ANGGOTA;
-  try {
-    const doc = await d1db.getMeta(_rt.d1, table);
-    if (doc && Array.isArray(doc.items) && doc.items.length) return doc.items;
-  } catch (e) { console.warn('meta d1:', e.message); }
-  return seed;
-}
-
-async function saveTable(table, rows) {
-  await d1db.setMeta(_rt.d1, table, { id: table, items: rows, at: Date.now() });
+  return await d1db.listTable(_rt.d1, table);
 }
 
 const handler = async (req, res) => {
@@ -257,6 +250,7 @@ const handler = async (req, res) => {
       return send(res, 200, {
         ok: true, mode: 'cloudflare', version: SERVER_VERSION,
         driver: driverName(), dbReady: hasDb(), ts: nowWIB(),
+        store: 'sqlite-d1', tables: ['logs', 'pay', 'meta', 'anggota', 'lis'],
       });
     }
 
@@ -268,8 +262,7 @@ const handler = async (req, res) => {
         res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
         return send(res, 200, { ok: true, table, count: data.length, data });
       } catch (err) {
-        const seed = table === 'lis' ? SEED_LIS : SEED_ANGGOTA;
-        return send(res, 200, { ok: true, table, count: seed.length, data: seed, fallback: true });
+        return send(res, 500, { ok: false, table, error: 'Gagal membaca tabel ' + table + ': ' + err.message });
       }
     }
 
@@ -314,8 +307,8 @@ const handler = async (req, res) => {
     if (action === 'bootstrap') {
       try {
         const [anggotaRes, lisRes, logsRes, payRes] = await Promise.all([
-          loadTable('anggota').catch(() => SEED_ANGGOTA),
-          loadTable('lis').catch(() => SEED_LIS),
+          loadTable('anggota').catch(() => []),
+          loadTable('lis').catch(() => []),
           readAllLogs().catch(() => []),
           readPayments().catch(() => ({})),
         ]);
@@ -654,20 +647,23 @@ const handler = async (req, res) => {
             ? 'LIS-' + randomBytes(3).toString('hex').toUpperCase()
             : 'ANG-' + randomBytes(3).toString('hex').toUpperCase());
           const idx = rows.findIndex((r) => r.id === id);
-          const merged = Object.assign({}, idx >= 0 ? rows[idx] : {}, rec, { id });
-          if (idx >= 0) rows[idx] = merged;
-          else rows.push(merged);
-          await saveTable(table, rows);
-          return send(res, 200, { ok: true, mode: idx >= 0 ? 'update' : 'add', record: merged, count: rows.length });
+          const merged = Object.assign({}, idx >= 0 ? rows[idx] : {}, rec, { id, label: rec.label || rec.nama });
+          await d1db.upsertTable(_rt.d1, table, [merged]);
+          const count = await d1db.countTable(_rt.d1, table);
+          return send(res, 200, { ok: true, mode: idx >= 0 ? 'update' : 'add', record: merged, count });
         }
         const id = String(body.id || '').trim();
         const hard = String(body.hard || '') === 'true' || body.hard === true;
         const idx = rows.findIndex((r) => r.id === id);
         if (idx < 0) return send(res, 404, { ok: false, error: 'Data tidak ditemukan' });
-        if (hard) rows.splice(idx, 1);
-        else rows[idx] = Object.assign({}, rows[idx], { status: 'Nonaktif' });
-        await saveTable(table, rows);
-        return send(res, 200, { ok: true, mode: hard ? 'hard-delete' : 'deactivate', count: rows.length });
+        if (hard) {
+          await d1db.deleteTableRow(_rt.d1, table, id);
+        } else {
+          const off = Object.assign({}, rows[idx], { status: 'Nonaktif' });
+          await d1db.upsertTable(_rt.d1, table, [off]);
+        }
+        const count = await d1db.countTable(_rt.d1, table);
+        return send(res, 200, { ok: true, mode: hard ? 'hard-delete' : 'deactivate', count });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Gagal menyimpan database: ' + err.message });
       }
@@ -678,7 +674,7 @@ const handler = async (req, res) => {
         const data = await loadTable('anggota');
         return send(res, 200, { ok: true, received: true, count: data.length });
       } catch {
-        return send(res, 200, { ok: true, received: true, count: SEED_ANGGOTA.length });
+        return send(res, 200, { ok: true, received: true, count: 0 });
       }
     }
 
@@ -728,16 +724,18 @@ const handler = async (req, res) => {
         const payDocs = Object.keys(payMap).map((k) => payMap[k]).filter((p) => p && p.tgl && p.stambuk);
         const nLogs = await d1db.replaceLogs(_rt.d1, logs);
         const nPay = await d1db.replacePay(_rt.d1, payDocs);
+        let nAnggota = 0;
+        let nLis = 0;
         if (Array.isArray(body.anggota) && body.anggota.length) {
-          await d1db.setMeta(_rt.d1, 'anggota', { id: 'anggota', items: body.anggota, at: Date.now() });
+          nAnggota = await d1db.replaceTable(_rt.d1, 'anggota', body.anggota);
         }
         if (Array.isArray(body.lis) && body.lis.length) {
-          await d1db.setMeta(_rt.d1, 'lis', { id: 'lis', items: body.lis, at: Date.now() });
+          nLis = await d1db.replaceTable(_rt.d1, 'lis', body.lis);
         }
         const check = await d1db.listLogs(_rt.d1);
         return send(res, 200, {
           ok: true, logs: nLogs, pay: nPay,
-          anggota: (body.anggota || []).length, lis: (body.lis || []).length,
+          anggota: nAnggota, lis: nLis,
           d1Count: check.length, verified: check.length === logs.length,
         });
       } catch (err) {

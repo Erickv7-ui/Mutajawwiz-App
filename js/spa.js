@@ -438,22 +438,11 @@
       });
     }
 
-    /** Hanya file statis dari repo (CDN) — cepat, tanpa nunggu cloud */
+    /**
+     * Tampil cepat dari cache lokal (localStorage) sebelum API menjawab.
+     * Data master sekarang cuma ada di D1 — tidak ada file JSON statis lagi.
+     */
     async function loadMasterDataStatic() {
-      try {
-        const [sm, sl] = await Promise.allSettled([
-          fetch('data/master.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null),
-          fetch('data/lis.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null),
-        ]);
-        if (sm.status === 'fulfilled' && Array.isArray(sm.value) && sm.value.length) {
-          MASTER_ANGGOTA = sm.value.map(normalizeMember);
-          cacheMaster(MASTER_ANGGOTA);
-        }
-        if (sl.status === 'fulfilled' && Array.isArray(sl.value)) {
-          LIS_ANGGOTA = sl.value.map(normalizeMember);
-          cacheLis(LIS_ANGGOTA);
-        }
-      } catch (e) { console.warn('[static] gagal:', e.message); }
       if (!MASTER_ANGGOTA.length) MASTER_ANGGOTA = readCachedMaster().map(normalizeMember);
       if (!LIS_ANGGOTA.length) LIS_ANGGOTA = readCachedLis().map(normalizeMember);
       try { refreshPengabsenList(); } catch (e) {}
@@ -549,23 +538,11 @@
       const api = cloudOn() ? window.LISApi : null;
       let fromCloud = false;
 
-      // 1) Baca file statis dari repo (CDN, instan) — database manual di GitHub
-      try {
-        const [sm, sl] = await Promise.allSettled([
-          fetch('data/master.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null),
-          fetch('data/lis.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null),
-        ]);
-        if (sm.status === 'fulfilled' && Array.isArray(sm.value) && sm.value.length) {
-          MASTER_ANGGOTA = sm.value.map(normalizeMember);
-          cacheMaster(MASTER_ANGGOTA);
-        }
-        if (sl.status === 'fulfilled' && Array.isArray(sl.value)) {
-          LIS_ANGGOTA = sl.value.map(normalizeMember);
-          cacheLis(LIS_ANGGOTA);
-        }
-      } catch (e) { console.warn('[static] gagal:', e.message); }
+      // 1) Cache lokal dulu biar layar langsung terisi
+      if (!MASTER_ANGGOTA.length) MASTER_ANGGOTA = readCachedMaster().map(normalizeMember);
+      if (!LIS_ANGGOTA.length) LIS_ANGGOTA = readCachedLis().map(normalizeMember);
 
-      // 2) Cloud menyusul di background (hanya kalau ada perubahan / edit dari panel)
+      // 2) Sumber kebenaran: D1 lewat API (tabel anggota / lis)
       if (api) {
         const [mRes, lRes] = await Promise.allSettled([api.master(), api.lis()]);
         if (mRes.status === 'fulfilled' && mRes.value && Array.isArray(mRes.value.data) && mRes.value.data.length) {

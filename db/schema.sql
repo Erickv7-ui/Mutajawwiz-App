@@ -21,3 +21,26 @@ CREATE TABLE IF NOT EXISTS meta (
   data TEXT NOT NULL,
   at INTEGER
 );
+
+-- Master anggota (menggantikan data/master.json)
+CREATE TABLE IF NOT EXISTS anggota (
+  id TEXT PRIMARY KEY,
+  nama TEXT,
+  kelas TEXT,
+  stambuk TEXT,
+  rayon TEXT,
+  status TEXT,
+  data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_anggota_kelas ON anggota(kelas);
+
+-- Pengurus LIS (menggantikan data/lis.json)
+CREATE TABLE IF NOT EXISTS lis (
+  id TEXT PRIMARY KEY,
+  nama TEXT,
+  kelas TEXT,
+  stambuk TEXT,
+  section TEXT,
+  status TEXT,
+  data TEXT NOT NULL
+);

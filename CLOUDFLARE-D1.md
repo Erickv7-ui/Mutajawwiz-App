@@ -145,3 +145,15 @@ Data yang masuk saat di Cloudflare tidak otomatis balik — jalankan `dump` dari
 - Zona `experimentlynss.my.id` (full setup, NS `bonnie`/`carlos`) isinya: CAA x3, CNAME `@`/`www`/`*` -> `mutajawwiz.pages.dev` proxied.
 - Bukti www sudah di Cloudflare (DNS publik): `https://dns.google/resolve?name=www.experimentlynss.my.id&type=A` -> 104.21.1.175 / 172.67.129.171.
 - Endpoint cek cepat: `/api?action=ping` harus balas `version v53`, `driver d1`, `dbReady true`.
+
+## v54 — semua data di SQLite, nol file JSON
+
+| Tabel | Isi | Kolom penting |
+|---|---|---|
+| `logs` | absensi | id, tgl, ts, pengabsen, data |
+| `pay` | tagihan/lunas | k (`tgl__stambuk`), tgl, stambuk, data |
+| `meta` | catatan kecil (legacy) | k, data, at |
+| `anggota` | 724 santri | id, nama, kelas, stambuk, rayon, status, data |
+| `lis` | 28 pengurus | id, nama, kelas, stambuk, section, status, data |
+
+`db/schema.sql` = skema, `db/seed-master.sql` = seed master/LIS (sekali jalan). Tidak ada lagi `data/*.json`, tidak ada dependency Vercel.

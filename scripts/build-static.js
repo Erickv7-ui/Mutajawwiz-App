@@ -7,7 +7,8 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'dist');
-const COPY = ['index.html', 'css', 'js', 'data', 'assets', 'favicon.ico'];
+// folder `data` (master.json/lis.json) sudah tidak dipakai: master/lis ada di D1
+const COPY = ['index.html', 'css', 'js', 'assets', 'favicon.ico'];
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
