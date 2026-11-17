@@ -598,3 +598,13 @@ Perbaikan:
 - Hint "Password default: 123456" otomatis disembunyikan setelah password diganti.
 
 Verifikasi (Edge headless, profil bersih, 3 skenario): tanpa sesi → gerbang `display:flex`, `z-index 9999`, menutup seluruh viewport, `elementFromPoint` = area gerbang, body terkunci; sesi valid → gerbang `display:none`, `html.authed`, dashboard tampil; sesi kedaluwarsa → gerbang tampil lagi. Hasil: LULUS.
+
+### 17 Nov 2026 — v61: sesi tetap per-tab (permintaan: tutup browser = password lagi)
+
+Sesi 30 hari dari v60 dibatalkan. Aturannya sekarang:
+- Login disimpan di `sessionStorage` saja → **refresh/reload tab tetap masuk**, tidak minta password.
+- Tab/browser ditutup → sesi hilang, buka lagi **wajib password**.
+- Kunci lama `lis2627_authed_until` (localStorage, sisa v60) diabaikan dan dibersihkan otomatis saat login/logout, jadi yang sempat dapat sesi 30 hari tidak "nyangkut" masuk.
+- Perbaikan anti-kedip dari v59/v60 tetap berlaku (gerbang tampil sejak lukisan pertama, class `authed` di `<html>`).
+
+Verifikasi (Edge headless, profil bersih): belum login → gerbang tampil menutup konten; sesi ada di tab → `display:none`, dashboard tampil; sesi hilang + sisa kunci v60 masih ada di localStorage → gerbang tampil lagi. Hasil: LULUS.

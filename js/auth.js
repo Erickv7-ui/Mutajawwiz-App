@@ -4,8 +4,7 @@
 
   var PASS_KEY = 'lis2627_web_pass_v2';
   var AUTH_KEY = 'lis2627_authed';
-  var UNTIL_KEY = 'lis2627_authed_until';   // sesi panjang (localStorage), biar tidak login tiap buka
-  var SESSION_DAYS = 30;
+  var UNTIL_KEY = 'lis2627_authed_until';   // sisa versi lama (v60) — dibersihkan, tidak dipakai lagi
   var DEFAULT_PASS = '123456';
 
   /* Hash sederhana, tidak butuh crypto.subtle (aman di http/file://) */
@@ -45,20 +44,15 @@
     }
   }
 
+  /* Sesi hanya berlaku di tab yang sedang dipakai: refresh tidak minta password,
+     tapi begitu tab/browser ditutup, buka lagi harus password. */
   function isAuthed() {
-    try {
-      if (sessionStorage.getItem(AUTH_KEY) === '1') return true;
-      var until = parseInt(localStorage.getItem(UNTIL_KEY) || '0', 10) || 0;
-      return until > Date.now();
-    } catch (e) { return false; }
+    try { return sessionStorage.getItem(AUTH_KEY) === '1'; } catch (e) { return false; }
   }
 
   function saveAuthed() {
     try { sessionStorage.setItem(AUTH_KEY, '1'); } catch (e) {}
-    try {
-      localStorage.setItem(UNTIL_KEY, String(Date.now() + SESSION_DAYS * 864e5));
-      localStorage.setItem(AUTH_KEY, '1');
-    } catch (e) {}
+    try { localStorage.removeItem(UNTIL_KEY); localStorage.removeItem(AUTH_KEY); } catch (e) {}
   }
 
   function clearAuthed() {
