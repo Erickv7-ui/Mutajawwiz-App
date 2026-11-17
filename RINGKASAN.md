@@ -498,3 +498,21 @@ device itu dan belum masuk server.
   naik 3, setelah reload lokal 46 = server 46, antrian 0. XLSX live: `formatCode="dd-mm-yyyy"`,
   tidak ada token jam. Data uji sudah dihapus (`deleteLog`), sisa 41 entri asli.
 
+
+### 17 Nov 2026 — v52: cuma D1, sampah jalur mati dibuang
+
+- `api/index.js` sekarang **satu driver: Cloudflare D1 (SQLite)**. Cabang Blob,
+  Firestore, dan filesystem dibuang. Tanpa binding `env.DB` server balas 503
+  dengan pesan jelas, bukan diam-diam menulis ke memori.
+- `lib/firestore.js`, `vercel.json`, `.vercelignore` dihapus. Sebelumnya juga sudah
+  dibuang `server.js`, `Dockerfile`, `.dockerignore`, `firebase.json`,
+  `.firebaserc`, `MIGRASI-GOOGLE-CLOUD.md`, `deploy.sh`, `data/logs.json`.
+- Tidak ada lagi cache RAM status bayar: `readPayments()` selalu baca D1, jadi
+  pay/unpay langsung konsisten di request berikutnya.
+- `SERVER_VERSION`/`?v=` naik ke **v52**.
+- Kolom **Petugas Pengabsen wajib**: kirim laporan ditolak (toast merah + field
+  disorot) kalau nama pengabsen kosong, dan kolom otomatis dikosongkan setelah
+  laporan tersimpan (satuan maupun massal).
+- Uji lokal `wrangler pages dev`: ping v52 driver d1, save/duplikat/dobel-sengaja,
+  save_bulk, logs, pay/unpay, hidden_bulk, bootstrap (724 master/28 lis), export,
+  dump, deleteLog — semua 200.

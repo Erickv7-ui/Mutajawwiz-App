@@ -1037,7 +1037,18 @@
         return;
       }
       const tgl = document.getElementById('inp-tanggal').value || getToday();
-      const pengabsen = document.getElementById('inp-pengabsen').value.trim() || '';
+      // Petugas pengabsen wajib: laporan tanpa nama petugas tidak boleh masuk.
+      const pengabsenEl = document.getElementById('inp-pengabsen');
+      const pengabsen = (pengabsenEl?.value || '').trim();
+      if (!pengabsen) {
+        if (pengabsenEl) {
+          pengabsenEl.style.borderColor = '#FF4D4D';
+          pengabsenEl.focus();
+        }
+        showToast('Nama petugas pengabsen wajib diisi sebelum kirim laporan!', 'red');
+        return;
+      }
+      if (pengabsenEl) pengabsenEl.style.borderColor = '';
       const bahasa = document.querySelector('input[name="inp-bahasa"]:checked')?.value || 'Indonesian';
       const ucapan = document.getElementById('inp-ucapan').value.trim();
       const btn = document.getElementById('btn-simpan');
@@ -1072,6 +1083,8 @@
         saveLogs();
         document.getElementById('inp-search').value = '';
         document.getElementById('inp-ucapan').value = '';
+        // Laporan sudah terkirim: kolom pengabsen dikosongkan untuk petugas berikutnya.
+        if (pengabsenEl) { pengabsenEl.value = ''; pengabsenEl.style.borderColor = ''; }
         syncSelectedMemberPreview();
         renderInputLogToday();
         renderDashboard();
@@ -1147,7 +1160,18 @@
       }
       const tgl = document.getElementById('mass-tanggal').value || getToday();
       const bahasa = document.getElementById('mass-bahasa').value;
-      const pengabsen = document.getElementById('inp-pengabsen').value.trim() || '';
+      // Petugas pengabsen wajib: laporan tanpa nama petugas tidak boleh masuk.
+      const pengabsenEl = document.getElementById('inp-pengabsen');
+      const pengabsen = (pengabsenEl?.value || '').trim();
+      if (!pengabsen) {
+        if (pengabsenEl) {
+          pengabsenEl.style.borderColor = '#FF4D4D';
+          pengabsenEl.focus();
+        }
+        showToast('Nama petugas pengabsen wajib diisi sebelum kirim laporan!', 'red');
+        return;
+      }
+      if (pengabsenEl) pengabsenEl.style.borderColor = '';
       const waktu = new Date().toTimeString().slice(0, 5);
       const btn = document.getElementById('btn-mass-simpan');
       const btnLabel = btn ? btn.textContent : '';
@@ -1198,6 +1222,8 @@
 
       if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
       document.querySelectorAll('.mass-chk').forEach(c => (c.checked = false));
+      // Laporan massal sudah terkirim: kolom pengabsen dikosongkan.
+      if (ok > 0 && pengabsenEl) { pengabsenEl.value = ''; pengabsenEl.style.borderColor = ''; }
       renderInputLogToday();
       renderDashboard();
       if (failed.length) {
