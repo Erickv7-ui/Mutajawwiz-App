@@ -8,13 +8,14 @@
   "scripts": {
     "build:static": "node scripts/build-static.js",
     "dev": "node scripts/build-static.js && wrangler pages dev dist --d1=DB",
-    "cf:dev": "node scripts/build-static.js && wrangler pages dev dist --d1=DB",
-    "cf:deploy": "node scripts/build-static.js && wrangler pages deploy dist",
+    "deploy": "node scripts/build-static.js && wrangler pages deploy dist --project-name mutajawwiz --branch main",
     "db:init": "wrangler d1 execute mutajawwiz --remote --file=db/schema.sql",
-    "db:migrate": "node scripts/migrate-to-d1.js"
+    "db:seed": "wrangler d1 execute mutajawwiz --remote --file=db/seed-master.sql",
+    "db:sql": "wrangler d1 execute mutajawwiz --remote --command",
+    "db:backup": "wrangler d1 export mutajawwiz --remote --output db/backup.sql",
+    "db:restore": "node scripts/migrate-to-d1.js"
   },
-  "dependencies": {
-  },
+  "dependencies": {},
   "devDependencies": {
     "wrangler": "^4.163.0"
   }

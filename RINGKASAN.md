@@ -533,3 +533,37 @@ device itu dan belum masuk server.
 - CRUD master/LIS (`db-save`/`db-delete`) sekarang menulis satu baris (`INSERT OR REPLACE` / `DELETE`) — bukan baca-semua lalu tulis ulang.
 - `scripts/build-static.js` tidak menyalin folder `data` lagi. Versi `v54`, `?v=54` (9 file).
 - Hasil cek D1 setelah migrasi: anggota 724, lis 28, logs 121, pay 62.
+
+### 17 Nov 2026 — bersih-bersih folder + deploy 1 perintah
+
+Isi repo sekarang cuma yang dipakai runtime/build:
+
+```
+index.html  css/  js/  api/  lib/  functions/  db/  scripts/
+wrangler.toml  package.json  package-lock.json
+RINGKASAN.md  CLOUDFLARE-D1.md  .gitignore  .gitattributes
+```
+
+Dihapus/diabaikan (otomatis dibuat ulang, jangan di-commit): `dist/`, `.wrangler/`, `node_modules/`, `db/backup*.sql`, `*.log`.
+
+Cara edit + deploy ulang (tanpa bersih-bersih):
+
+```
+npm run deploy          # build dist/ lalu deploy ke Cloudflare Pages
+```
+
+Kalau muncul `stdin is not a tty` (jalan dari tool non-interaktif), pakai:
+
+```
+npm run deploy < /dev/null
+```
+
+Perintah database:
+
+```
+npm run db:sql -- "select count(*) from logs"
+npm run db:backup       # db/backup.sql (gitignore)
+npm run db:init         # bikin tabel kalau kosong
+npm run db:seed         # isi ulang master/LIS dari db/seed-master.sql
+npm run dev             # server lokal 8788 + D1 lokal
+```

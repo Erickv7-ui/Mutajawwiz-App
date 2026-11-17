@@ -7,3 +7,7 @@ dist/
 __probe.html
 __theme-*-preview.html
 .wrangler/
+db/backup*.sql
+.dev.vars
+*.tmp
+backup-*.sql
