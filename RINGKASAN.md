@@ -677,3 +677,28 @@ Perbaikan:
 - Setelah simpan massal sukses, kolom pengabsen dikosongkan dan fokus balik ke situ (sama seperti mode satuan).
 
 Verifikasi produksi v65 (headless Edge): prefill satuan→massal "QA Hermes" masuk, fokus otomatis `mass-pengabsen`, ENTER pindah ke `mass-search-filter`; simpan tanpa pengabsen → toast "Nama petugas pengabsen wajib diisi", border merah, fokus balik ke kolom, log tidak bertambah; isi pengabsen + centang 1 anggota → "1 anggota berhasil dicatat serentak!", kolom pengabsen kosong lagi. Log uji dihapus (`deleteLog`), bootstrap 119 → 118.
+
+### 18 Nov 2026 — v66/v67: fitur Beli Kertas Hukuman (tambahan biaya per lembar)
+
+Santri yang kena pelanggaran bisa **beli kertas hukuman tambahan**. Biayanya menambah tagihan: `harga per lembar x jumlah lembar`, akumulatif dengan denda yang sudah ada.
+
+Aturan yang dipakai:
+- Harga per lembar default = tarif denda aktif (kolom Tarif Indonesian, sekarang Rp 2.000), masih bisa diubah manual di modal.
+- Input dari halaman **Tagihan**: tombol `+ Kertas` di baris tagihan yang belum lunas.
+- Biaya nempel ke tagihan santri tanggal itu, tapi tampil sebagai **rincian sendiri**: tag `Kertas N lembar`, baris `+ Kertas 2 x Rp 2.000 = Rp 4.000`, dan di kolom nominal ada `denda Rp 2.000 + kertas Rp 4.000`.
+- Tagihan yang sudah lunas/hidden tidak bisa ditambah kertas (harus batal lunas dulu).
+- Entri kertas bisa dihapus per baris (`hapus` di rincian) selama tagihan belum lunas.
+
+Teknis:
+- Tabel D1 baru `kertas` (`id`, `tgl`, `stambuk`, `ts`, `data` JSON) + index `idx_kertas_tgl`; dibuat otomatis oleh `ensureSchema()` di `lib/store-d1.js`.
+- Endpoint: `GET /api?action=kertas`, `POST kertas_add` (wajib PIN/Server Pass, validasi jumlah 1-200 & harga > 0), `POST kertas_del`. `bootstrap` dan `dump` sekarang ikut membawa `kertas`. `clearall` ikut mengosongkan tabel kertas.
+- Harga disimpan per entri, jadi mengubah tarif di Pengaturan tidak mengubah tagihan kertas lama.
+- `getConsolidatedTagihan()` di `js/spa.js` menambahkan `kertasQty`, `kertasBiaya`, `kertasItems`, dan menaikkan `totalDenda`. Karena total kas/lunas/tunggakan dashboard & laporan dihitung dari `totalDenda`, kertas otomatis ikut terhitung saat pelunasan.
+- Ekspor CSV keuangan menambah kolom `Kertas_Lembar` dan `Biaya_Kertas`.
+- `KERTAS` di frontend dimuat dari `bootstrap` dan di-refresh tiap masuk halaman Tagihan (`loadKertasFromCloud()`), tidak dicache di localStorage.
+
+Verifikasi produksi v67 (headless Edge + API):
+- `GET kertas` 200 (count 0 sebelum tes).
+- API `kertas_add` 2 lembar x Rp 2.000 → entri `KRT-...` tersimpan; kartu tagihan Farid Evan Fadilah (2026-11-06) naik dari Rp 2.000 → Rp 6.000 dengan rincian `denda Rp 2.000 + kertas Rp 4.000`.
+- UI: tombol `+ Kertas` buka modal (default 1 lembar, harga 2.000, total ikut berubah saat jumlah diganti 3 → Rp 6.000), konfirmasi → toast "Kertas 3 lembar ditambahkan (Rp 6.000)", tagihan 2.000 → 8.000; tombol `hapus` di rincian → konfirmasi → entri hilang, total balik.
+- Semua entri uji dihapus lagi: `GET kertas` count 0, `logs` tetap 151.

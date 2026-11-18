@@ -59,6 +59,9 @@
     }
 
     let allLogs = [];
+    // Daftar kertas hukuman tambahan (biaya per lembar) — server-side, per tagihan
+    let KERTAS = [];
+    let pendingKertasKey = null;
     let apiUrl = safeGetStorage(API_KEY) || '/api';
     let isAdminUnlocked = getSessionAdminState();
     let charts = {};
@@ -571,7 +574,11 @@
       const api = cloudOn() ? window.LISApi : null;
       if (!api) return false;
       try {
-        const res = await api.logs();
+        const [res, kRes] = await Promise.all([
+          api.logs(),
+          (api.kertas ? api.kertas().catch(() => null) : Promise.resolve(null)),
+        ]);
+        if (kRes && Array.isArray(kRes.data)) KERTAS = kRes.data;
         const cloud = Array.isArray(res.data) ? res.data : [];
         const contentKey = (l) => [l.tgl, l.stambuk || l.nama, l.nama, l.bahasa,
           (l.ucapan || 'None').toLowerCase(), l.kamar, l.pengabsen].join('|');
@@ -600,6 +607,19 @@
         console.warn('[logs] cloud gagal:', err.message);
         return false;
       }
+    }
+
+    /** Ambil daftar kertas hukuman terbaru dari server (murah, datanya kecil) */
+    async function loadKertasFromCloud() {
+      const api = cloudOn() ? window.LISApi : null;
+      if (!api || !api.kertas) return false;
+      try {
+        const res = await api.kertas();
+        if (res && Array.isArray(res.data)) { KERTAS = res.data; return true; }
+      } catch (err) {
+        console.warn('[kertas] cloud gagal:', err.message);
+      }
+      return false;
     }
 
     function cloudOn() {
@@ -716,7 +736,10 @@
 
       if (pageId === 'dashboard') renderDashboard();
       if (pageId === 'input') renderInputLogToday();
-      if (pageId === 'tagihan') renderTagihan();
+      if (pageId === 'tagihan') {
+        renderTagihan();
+        loadKertasFromCloud().then((ok) => { if (ok) renderTagihan(); });
+      }
       if (pageId === 'laporan') {
         renderLaporan();
         if (window.LISRekap) window.LISRekap.render();
@@ -753,6 +776,10 @@
             logs: [],
             indo: 0,
             java: 0,
+            dendaDasar: 0,
+            kertasQty: 0,
+            kertasBiaya: 0,
+            kertasItems: [],
             totalDenda: 0,
             lunas: true,
             hidden: false,
@@ -769,6 +796,7 @@
           map[key].indo++;
           map[key].totalDenda += tarif.Indonesian;
         }
+        map[key].dendaDasar = map[key].totalDenda;
 
         if (!log.lunas) {
           map[key].lunas = false;
@@ -778,6 +806,23 @@
         }
         // Hidden: bayar lunas tapi TIDAK masuk hitungan total kas
         if (log.hidden) map[key].hidden = true;
+      });
+
+      // Kertas hukuman: biaya tambahan per lembar, nempel ke tagihan santri
+      // pada tanggal yang sama (harga disimpan per entri, jadi perubahan tarif
+      // tidak mengubah tagihan lama).
+      (KERTAS || []).forEach(k => {
+        if (!k) return;
+        const key = `${k.tgl}__${k.stambuk || k.nama}`;
+        const bill = map[key];
+        if (!bill) return;
+        const jumlah = Math.max(0, Math.floor(Number(k.jumlah) || 0));
+        const harga = Math.max(0, Math.floor(Number(k.harga) || 0));
+        if (!jumlah) return;
+        bill.kertasItems.push(k);
+        bill.kertasQty += jumlah;
+        bill.kertasBiaya += jumlah * harga;
+        bill.totalDenda += jumlah * harga;
       });
 
       return Object.values(map).sort((a, b) => b.tgl.localeCompare(a.tgl));
@@ -1292,9 +1337,18 @@
               <div class="flex flex-wrap items-center gap-1.5">
                 ${b.logs.length > 1 ? `<span class="tag bg-[#B388FF] text-black">Gabungan ${b.logs.length}x</span>` : ''}
                 <span class="text-xs font-extrabold text-black">${parts.join(' + ')}</span>
+                ${b.kertasQty > 0 ? `<span class="tag bg-[#FFD500] text-black">Kertas ${b.kertasQty} lembar</span>` : ''}
               </div>
+              ${b.kertasItems.length > 0 ? `<div class="mt-1 space-y-0.5">${b.kertasItems.map(k => `
+                <div class="text-[10px] font-bold text-black/75 flex items-center gap-1.5">
+                  <span>+ Kertas ${escapeHtml(String(k.jumlah))} × ${formatRupiah(Number(k.harga) || 0)} = ${formatRupiah((Number(k.jumlah) || 0) * (Number(k.harga) || 0))}</span>
+                  ${b.lunas ? '' : `<button onclick="hapusKertas('${escapeHtml(k.id || '')}')" class="text-[10px] font-extrabold text-[#C04A4A] underline" title="Hapus entri kertas">hapus</button>`}
+                </div>`).join('')}</div>` : ''}
             </td>
-            <td class="font-extrabold text-black whitespace-nowrap">${formatRupiah(b.totalDenda)}</td>
+            <td class="font-extrabold text-black whitespace-nowrap">
+              ${formatRupiah(b.totalDenda)}
+              ${b.kertasBiaya > 0 ? `<div class="text-[10px] font-bold text-black/70">denda ${formatRupiah(b.dendaDasar)} + kertas ${formatRupiah(b.kertasBiaya)}</div>` : ''}
+            </td>
             <td>
               ${b.hidden
                 ? `<span class="tag bg-[#9E6BFF] text-black">Hidden</span>
@@ -1308,7 +1362,7 @@
             <td class="text-right whitespace-nowrap">
               ${b.lunas
                 ? `<button onclick="toggleHidden('${escapeHtml(b.key)}')" class="btn ${b.hidden ? 'btn-yellow' : ''} py-1 px-2 text-[10px]" title="Bayar lunas tapi tidak masuk hitung total">${b.hidden ? 'Unhide' : 'Hide'}</button> <button onclick="requestBatalLunas('${escapeHtml(b.key)}')" class="btn py-1 px-2.5 text-[11px]">Batal</button>`
-                : `<button onclick="openLunasModal('${escapeHtml(b.key)}')" class="btn btn-green py-1 px-3 text-[11px]">Lunasi</button> <button onclick="openLunasModal('${escapeHtml(b.key)}', true)" class="btn py-1 px-2 text-[10px]" title="Lunasi sebagai hidden">Hide</button>`
+                : `<button onclick="openLunasModal('${escapeHtml(b.key)}')" class="btn btn-green py-1 px-3 text-[11px]">Lunasi</button> <button onclick="openLunasModal('${escapeHtml(b.key)}', true)" class="btn py-1 px-2 text-[10px]" title="Lunasi sebagai hidden">Hide</button> <button onclick="openKertasModal('${escapeHtml(b.key)}')" class="btn btn-yellow py-1 px-2 text-[10px]" title="Tambah beli kertas hukuman">+ Kertas</button>`
               }
             </td>
           </tr>
@@ -1609,6 +1663,108 @@
       modal.classList.remove('flex');
       pendingLunasKey = null;
       pendingLunasHidden = false;
+    }
+
+    // ===================== BELI KERTAS HUKUMAN =====================
+    function kertasHargaDefault() {
+      const tarif = getTarif();
+      return tarif.Indonesian || 2000;
+    }
+
+    function updateKertasTotal() {
+      const jumlah = Math.max(0, parseInt(document.getElementById('kertas-jumlah')?.value) || 0);
+      const harga = Math.max(0, parseInt(document.getElementById('kertas-harga')?.value) || 0);
+      const el = document.getElementById('kertas-total');
+      if (el) el.textContent = formatRupiah(jumlah * harga);
+    }
+
+    function openKertasModal(key) {
+      const bill = getConsolidatedTagihan().find(b => b.key === key);
+      if (!bill) return;
+      if (bill.lunas || bill.hidden) {
+        showToast('Tagihan sudah lunas. Batalkan lunas dulu kalau mau tambah kertas.', 'yellow');
+        return;
+      }
+      pendingKertasKey = key;
+      document.getElementById('kertas-modal-info').innerHTML = `
+        <div>Santri: <b>${escapeHtml(bill.nama)}</b> (${escapeHtml(bill.kelas)} • ${escapeHtml(bill.kamar)})</div>
+        <div>Tanggal Pelanggaran: <b>${escapeHtml(bill.tgl)}</b></div>
+        <div>Denda sekarang: <b>${formatRupiah(bill.totalDenda)}</b> (${bill.kertasQty ? `termasuk kertas ${formatRupiah(bill.kertasBiaya)}` : 'belum ada kertas'})</div>
+      `;
+      const jumlahEl = document.getElementById('kertas-jumlah');
+      const hargaEl = document.getElementById('kertas-harga');
+      if (jumlahEl) jumlahEl.value = '1';
+      if (hargaEl) hargaEl.value = String(kertasHargaDefault());
+      updateKertasTotal();
+      const modal = document.getElementById('kertas-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      setTimeout(() => { if (jumlahEl) { jumlahEl.focus(); jumlahEl.select(); } }, 60);
+    }
+
+    function closeKertasModal() {
+      const modal = document.getElementById('kertas-modal');
+      if (!modal) return;
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      pendingKertasKey = null;
+    }
+
+    async function confirmKertasAction() {
+      if (!pendingKertasKey) return;
+      const jumlah = Math.floor(Number(document.getElementById('kertas-jumlah')?.value) || 0);
+      const harga = Math.floor(Number(document.getElementById('kertas-harga')?.value) || 0);
+      if (jumlah < 1) { showToast('Jumlah lembar minimal 1.', 'red'); return; }
+      if (harga < 1) { showToast('Harga per lembar wajib diisi.', 'red'); return; }
+      const bill = getConsolidatedTagihan().find(b => b.key === pendingKertasKey);
+      if (!bill) { closeKertasModal(); return; }
+      if (!cloudOn()) { showToast('Beli kertas butuh koneksi server (mode cloud).', 'red'); return; }
+
+      const btn = document.getElementById('btn-confirm-kertas');
+      const label = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'MENYIMPAN...'; }
+      try {
+        const res = await window.LISApi.kertasAdd({
+          tgl: bill.tgl,
+          stambuk: bill.stambuk || bill.nama,
+          nama: bill.nama,
+          jumlah,
+          harga,
+          oleh: document.getElementById('inp-pengabsen')?.value?.trim() || '',
+          password: serverSecret(),
+        });
+        if (res && res.item) KERTAS = [...KERTAS.filter(k => k && k.id !== res.item.id), res.item];
+        closeKertasModal();
+        renderTagihan();
+        renderDashboard();
+        showToast(`Kertas ${jumlah} lembar ditambahkan (${formatRupiah(jumlah * harga)}).`, 'green');
+      } catch (err) {
+        const msg = err.status === 401 ? 'Password Admin Server salah.' : 'Gagal menambah kertas: ' + err.message;
+        showToast(msg, 'red');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = label || 'Tambah Kertas'; }
+      }
+    }
+
+    function hapusKertas(id) {
+      if (!id) return;
+      const item = (KERTAS || []).find(k => (k.id || '') === id);
+      if (!item) return;
+      openConfirmModal(
+        'Hapus Entri Kertas?',
+        `Kertas ${item.jumlah} lembar (${formatRupiah((Number(item.jumlah) || 0) * (Number(item.harga) || 0))}) untuk ${item.nama} akan dihapus dari tagihan.`,
+        async () => {
+          try {
+            await window.LISApi.kertasDelete({ id, password: serverSecret() });
+            KERTAS = KERTAS.filter(k => (k.id || '') !== id);
+            renderTagihan();
+            renderDashboard();
+            showToast('Entri kertas dihapus.', 'yellow');
+          } catch (err) {
+            showToast('Gagal menghapus kertas: ' + err.message, 'red');
+          }
+        }
+      );
     }
 
     function confirmLunasAction() {
@@ -1920,6 +2076,9 @@
           if (cloud.logs && Array.isArray(cloud.logs.data)) {
             applyCloudLogs(cloud.logs.data);
           }
+          if (cloud.kertas && Array.isArray(cloud.kertas.data)) {
+            KERTAS = cloud.kertas.data;
+          }
           refreshMemberBadges();
           initDatalist();
           renderMassList();
@@ -2102,13 +2261,24 @@
         const bills = getConsolidatedTagihan();
         downloadCSV(
           `Keuangan_LIS_26-27_${getToday()}.csv`,
-          ['Tanggal', 'Nama', 'Kelas', 'Kamar', 'Indonesian', 'Javanese', 'Total_Denda', 'Status', 'Tgl_Lunas', 'Penerima'],
-          bills.map(b => [String(b.tgl || '').slice(0, 10), b.nama, b.kelas, b.kamar, b.indo, b.java, b.totalDenda, b.lunas ? 'LUNAS' : 'BELUM LUNAS', String(b.tgl_lunas || '').slice(0, 10) || '-', b.penerima || '-'])
+          ['Tanggal', 'Nama', 'Kelas', 'Kamar', 'Indonesian', 'Javanese', 'Kertas_Lembar', 'Biaya_Kertas', 'Total_Denda', 'Status', 'Tgl_Lunas', 'Penerima'],
+          bills.map(b => [String(b.tgl || '').slice(0, 10), b.nama, b.kelas, b.kamar, b.indo, b.java, b.kertasQty || 0, b.kertasBiaya || 0, b.totalDenda, b.lunas ? 'LUNAS' : 'BELUM LUNAS', String(b.tgl_lunas || '').slice(0, 10) || '-', b.penerima || '-'])
         );
       });
 
       // Modal confirm buttons
       document.getElementById('btn-confirm-lunas').addEventListener('click', confirmLunasAction);
+      const kertasConfirmBtn = document.getElementById('btn-confirm-kertas');
+      if (kertasConfirmBtn) kertasConfirmBtn.addEventListener('click', confirmKertasAction);
+      ['kertas-jumlah', 'kertas-harga'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', updateKertasTotal);
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); confirmKertasAction(); }
+          if (e.key === 'Escape') closeKertasModal();
+        });
+      });
       document.getElementById('lunas-pin-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') confirmLunasAction();
       });
@@ -2216,6 +2386,7 @@
                 await window.LISApi.clearAll(pass);
               }
               allLogs = [];
+              KERTAS = [];
               safeSetStorage(CLEARED_AT_KEY, new Date().toISOString());
               saveLogs();
               renderDashboard();

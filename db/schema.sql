@@ -16,6 +16,16 @@ CREATE TABLE IF NOT EXISTS pay (
   data TEXT NOT NULL
 );
 
+-- Biaya kertas hukuman tambahan (nempel ke tagihan tgl + stambuk)
+CREATE TABLE IF NOT EXISTS kertas (
+  id TEXT PRIMARY KEY,
+  tgl TEXT,
+  stambuk TEXT,
+  ts INTEGER,
+  data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kertas_tgl ON kertas(tgl);
+
 CREATE TABLE IF NOT EXISTS meta (
   k TEXT PRIMARY KEY,
   data TEXT NOT NULL,

@@ -18,7 +18,7 @@ function driverName() { return 'd1'; }
 function hasDb() { return !!_rt.d1; }
 
 // versi kode server — dipakai untuk memastikan deploy sudah jalan
-const SERVER_VERSION = 'v65';
+const SERVER_VERSION = 'v68';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
 // PIN Pusat (dipakai UI untuk buka sesi admin). Server menerima PIN ini juga
@@ -201,6 +201,14 @@ async function readPayments() {
   return (await d1db.listPay(_rt.d1)) || {};
 }
 
+// ---------- kertas hukuman ----------
+// Biaya tambahan per lembar untuk santri yang kena pelanggaran. Disimpan
+// terpisah dari log supaya tetap muncul sebagai rincian sendiri di tagihan,
+// dan tetap ikut terhitung saat tagihan dilunasi.
+async function readKertas() {
+  return (await d1db.listKertas(_rt.d1)) || [];
+}
+
 /** Tulis hanya yang berubah + hapus key yang dibuang (hemat tulis D1). */
 async function writePayments(map) {
   const prev = (await d1db.listPay(_rt.d1)) || {};
@@ -289,7 +297,7 @@ const handler = async (req, res) => {
       return send(res, 200, {
         ok: true, mode: 'cloudflare', version: SERVER_VERSION,
         driver: driverName(), dbReady: hasDb(), ts: nowWIB(),
-        store: 'sqlite-d1', tables: ['logs', 'pay', 'meta', 'anggota', 'lis'],
+        store: 'sqlite-d1', tables: ['logs', 'pay', 'meta', 'anggota', 'lis', 'kertas'],
       });
     }
 
@@ -352,14 +360,26 @@ const handler = async (req, res) => {
       }
     }
 
+    // KERTAS HUKUMAN: daftar biaya kertas tambahan (dipakai halaman Tagihan)
+    if (action === 'kertas') {
+      try {
+        const data = await readKertas();
+        res.setHeader('Cache-Control', 'no-store');
+        return send(res, 200, { ok: true, count: data.length, data });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal membaca kertas: ' + err.message });
+      }
+    }
+
     // BOOTSTRAP: gabung master + lis + logs + pay dalam satu request (hemat cold start)
     if (action === 'bootstrap') {
       try {
-        const [anggotaRes, lisRes, logsRes, payRes] = await Promise.all([
+        const [anggotaRes, lisRes, logsRes, payRes, kertasRes] = await Promise.all([
           loadTable('anggota').catch(() => []),
           loadTable('lis').catch(() => []),
           readAllLogs().catch(() => []),
           readPayments().catch(() => ({})),
+          readKertas().catch(() => []),
         ]);
         const merged = mergePayments(logsRes, payRes);
         merged.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
@@ -368,6 +388,7 @@ const handler = async (req, res) => {
           master: { count: anggotaRes.length, data: anggotaRes },
           lis: { count: lisRes.length, data: lisRes },
           logs: { count: merged.length, data: merged },
+          kertas: { count: kertasRes.length, data: kertasRes },
         };
         res.setHeader('Cache-Control', 'no-store');
         return send(res, 200, payload);
@@ -709,6 +730,55 @@ const handler = async (req, res) => {
       }
     }
 
+    // ---------- kertas hukuman (tambahan biaya per lembar) ----------
+    // body: { tgl, stambuk, nama, jumlah, harga, password }
+    if (action === 'kertas_add') {
+      if (!isAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah' });
+      }
+      const tgl = String(body.tgl || '').trim().slice(0, 10);
+      const stambuk = String(body.stambuk || body.nama || '').trim();
+      const nama = String(body.nama || '').trim();
+      const jumlah = Math.floor(Number(body.jumlah) || 0);
+      const harga = Math.max(0, Math.floor(Number(body.harga) || 0));
+      if (!tgl || !stambuk) return send(res, 400, { ok: false, error: 'tgl dan stambuk wajib diisi' });
+      if (jumlah < 1 || jumlah > 200) return send(res, 400, { ok: false, error: 'jumlah lembar harus 1-200' });
+      if (!harga) return send(res, 400, { ok: false, error: 'harga per lembar wajib > 0' });
+      try {
+        const item = {
+          id: 'KRT-' + Date.now() + '-' + randomBytes(3).toString('hex').toUpperCase(),
+          tgl, stambuk, nama,
+          jumlah, harga,
+          total: jumlah * harga,
+          ts: Date.now(),
+          dibuat: nowWIB(),
+          oleh: String(body.oleh || '').trim(),
+        };
+        await d1db.upsertKertas(_rt.d1, [item]);
+        return send(res, 200, { ok: true, item });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal menyimpan kertas: ' + err.message });
+      }
+    }
+
+    // Hapus satu entri kertas
+    if (action === 'kertas_del') {
+      if (!isAdmin(body.password)) {
+        return send(res, 401, { ok: false, error: 'Password admin salah' });
+      }
+      const id = String(body.id || body.id_kertas || '').trim();
+      if (!id) return send(res, 400, { ok: false, error: 'id kertas wajib diisi' });
+      try {
+        const all = await readKertas();
+        const ada = all.some((k) => (k.id || k.id_kertas) === id);
+        if (!ada) return send(res, 404, { ok: false, error: 'Data kertas tidak ditemukan' });
+        await d1db.deleteKertas(_rt.d1, [id]);
+        return send(res, 200, { ok: true, deleted: 1 });
+      } catch (err) {
+        return send(res, 500, { ok: false, error: 'Gagal menghapus kertas: ' + err.message });
+      }
+    }
+
     // CRUD database (anggota / lis)
     if (action === 'db-save' || action === 'db-delete') {
       if (!isAdmin(body.password)) {
@@ -781,9 +851,10 @@ const handler = async (req, res) => {
         const payMap = await readPayments();
         const anggota = await loadTable('anggota');
         const lis = await loadTable('lis');
+        const kertas = await readKertas();
         return send(res, 200, {
           ok: true, at: new Date().toISOString(), driver: driverName(),
-          logs, pay: payMap, anggota, lis,
+          logs, pay: payMap, anggota, lis, kertas,
         });
       } catch (err) {
         return send(res, 500, { ok: false, error: 'Dump gagal: ' + err.message });
