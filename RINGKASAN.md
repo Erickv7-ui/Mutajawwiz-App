@@ -664,3 +664,16 @@ Detail perilaku (`initEnterChain()` di `js/spa.js`, listener `keydown` di `#mode
 - Setelah laporan terkirim, form dikosongkan dan fokus balik ke Petugas Pengabsen supaya bisa langsung lanjut input berikutnya.
 
 Verifikasi produksi v64 (headless Edge, login password gerbang, halaman Input): fokus awal `inp-pengabsen` → ENTER → `inp-search` → ketik nama lengkap (stambuk 24549 terisi) → ENTER → `inp-ucapan` → ENTER → laporan tersimpan (toast "Tercatat: Aldendra Aqeela Benzema"), `inp-search` + `inp-ucapan` kosong, fokus balik `inp-pengabsen`. Log uji dihapus lagi lewat `deleteLog` (bootstrap 117 → 116).
+
+### 18 Nov 2026 — v65: kolom Petugas Pengabsen di Absen Massal
+
+Bug: mode **Absen Massal Kamar** tidak punya kolom pengabsen sendiri. Kode lama membaca `#inp-pengabsen` milik form satuan — padahal form itu sedang disembunyikan, jadi kalau belum pernah diisi, simpan massal ditolak dengan pesan "pengabsen wajib" tanpa ada kolom yang bisa diketik (fokus malah lompat ke input tersembunyi).
+
+Perbaikan:
+- Kolom baru `#mass-pengabsen` (label "Petugas Pengabsen (Wajib)") di form massal, pakai datalist `pengabsen-list` yang sama.
+- `handleMassSave()` pakai `#mass-pengabsen` dulu, fallback ke `#inp-pengabsen` (biar kompatibel).
+- Pindah mode menyalin nama: satuan → massal dan massal → satuan (hanya kalau kolom tujuan masih kosong). Masuk mode massal langsung fokus ke kolom pengabsen.
+- ENTER di kolom pengabsen massal → fokus ke filter cepat.
+- Setelah simpan massal sukses, kolom pengabsen dikosongkan dan fokus balik ke situ (sama seperti mode satuan).
+
+Verifikasi produksi v65 (headless Edge): prefill satuan→massal "QA Hermes" masuk, fokus otomatis `mass-pengabsen`, ENTER pindah ke `mass-search-filter`; simpan tanpa pengabsen → toast "Nama petugas pengabsen wajib diisi", border merah, fokus balik ke kolom, log tidak bertambah; isi pengabsen + centang 1 anggota → "1 anggota berhasil dicatat serentak!", kolom pengabsen kosong lagi. Log uji dihapus (`deleteLog`), bootstrap 119 → 118.

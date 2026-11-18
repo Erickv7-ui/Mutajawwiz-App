@@ -1142,8 +1142,8 @@
       const tgl = document.getElementById('mass-tanggal').value || getToday();
       const bahasa = document.getElementById('mass-bahasa').value;
       // Petugas pengabsen wajib: laporan tanpa nama petugas tidak boleh masuk.
-      const pengabsenEl = document.getElementById('inp-pengabsen');
-      const pengabsen = (pengabsenEl?.value || '').trim();
+      const pengabsenEl = document.getElementById('mass-pengabsen') || document.getElementById('inp-pengabsen');
+      const pengabsen = (pengabsenEl?.value || document.getElementById('inp-pengabsen')?.value || '').trim();
       if (!pengabsen) {
         if (pengabsenEl) {
           pengabsenEl.style.borderColor = '#FF4D4D';
@@ -1204,7 +1204,7 @@
       if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
       document.querySelectorAll('.mass-chk').forEach(c => (c.checked = false));
       // Laporan massal sudah terkirim: kolom pengabsen dikosongkan.
-      if (ok > 0 && pengabsenEl) { pengabsenEl.value = ''; pengabsenEl.style.borderColor = ''; }
+      if (ok > 0 && pengabsenEl) { pengabsenEl.value = ''; pengabsenEl.style.borderColor = ''; pengabsenEl.focus(); }
       renderInputLogToday();
       renderDashboard();
       if (failed.length) {
@@ -2003,15 +2003,30 @@
         document.getElementById('mode-massal').classList.add('hidden');
         document.getElementById('btn-mode-satuan').className = 'btn btn-yellow py-2 px-3.5 text-xs';
         document.getElementById('btn-mode-massal').className = 'btn py-2 px-3.5 text-xs';
+        // Nama petugas yang sudah diketik di mode massal dibawa balik ke form satuan.
+        const massP = document.getElementById('mass-pengabsen');
+        const singleP = document.getElementById('inp-pengabsen');
+        if (massP && singleP && !singleP.value.trim() && massP.value.trim()) singleP.value = massP.value;
       });
       document.getElementById('btn-mode-massal').addEventListener('click', () => {
         document.getElementById('mode-massal').classList.remove('hidden');
         document.getElementById('mode-satuan').classList.add('hidden');
         document.getElementById('btn-mode-massal').className = 'btn btn-yellow py-2 px-3.5 text-xs';
         document.getElementById('btn-mode-satuan').className = 'btn py-2 px-3.5 text-xs';
+        // Absen massal butuh petugas pengabsen sendiri; bawa nama dari form satuan kalau ada.
+        const massP = document.getElementById('mass-pengabsen');
+        const singleP = document.getElementById('inp-pengabsen');
+        if (massP && singleP && !massP.value.trim() && singleP.value.trim()) massP.value = singleP.value;
+        if (massP) setTimeout(() => massP.focus(), 50);
       });
 
       // Mass mode events
+      const massPEl = document.getElementById('mass-pengabsen');
+      if (massPEl) massPEl.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter' || ev.shiftKey) return;
+        ev.preventDefault();
+        document.getElementById('mass-search-filter')?.focus();
+      });
       document.getElementById('mass-rayon').addEventListener('change', renderMassList);
       document.getElementById('mass-search-filter').addEventListener('input', renderMassList);
       document.getElementById('btn-mass-load').addEventListener('click', renderMassList);
