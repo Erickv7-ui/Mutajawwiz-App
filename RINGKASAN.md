@@ -702,3 +702,14 @@ Verifikasi produksi v67 (headless Edge + API):
 - API `kertas_add` 2 lembar x Rp 2.000 → entri `KRT-...` tersimpan; kartu tagihan Farid Evan Fadilah (2026-11-06) naik dari Rp 2.000 → Rp 6.000 dengan rincian `denda Rp 2.000 + kertas Rp 4.000`.
 - UI: tombol `+ Kertas` buka modal (default 1 lembar, harga 2.000, total ikut berubah saat jumlah diganti 3 → Rp 6.000), konfirmasi → toast "Kertas 3 lembar ditambahkan (Rp 6.000)", tagihan 2.000 → 8.000; tombol `hapus` di rincian → konfirmasi → entri hilang, total balik.
 - Semua entri uji dihapus lagi: `GET kertas` count 0, `logs` tetap 151.
+
+### 18 Nov 2026 — v69: filter status bayar di export XLSX + font Times New Roman 11
+
+- Panel **Export XLSX Template Resmi** dapat dropdown baru **Status Bayar**: `Semua status` / `Sudah bayar (lunas)` / `Belum bayar` (`#xlsx-status`).
+- Filter berlaku untuk **Unduh XLSX** (rentang tanggal / semua tanggal) dan **Unduh XLSX Harian** di halaman Laporan. Kombinasi dengan filter kelas/bahasa/nama/duplikat tetap jalan.
+- Filter memakai field `lunas` hasil gabung tabel `pay` (`mergePayments`), jadi statusnya sama dengan yang tampil di halaman Tagihan.
+- Semua sel di file XLSX sekarang **Times New Roman 11** (header bold 11, data 11 — sebelumnya data Calibri 12), diatur di `js/xlsx-writer.js` (`fonts` font 0 & 1).
+
+Verifikasi produksi v69 (headless Edge, rentang 2026-11-01 s/d 2026-11-18):
+- `belum` → 98 baris / 9 sheet; `sudah` → 54 baris / 1 sheet; `semua` → 152 baris / 10 sheet. Angka sama persis dengan `/api?action=logs` (152 total, 54 lunas).
+- `xl/styles.xml` hasil unduhan: dua font `Times New Roman` ukuran `11`.

@@ -165,6 +165,20 @@
     });
   }
 
+  /** Filter status bayar dari panel export: '' semua | 'sudah' lunas | 'belum' belum lunas */
+  function statusFilterOf() {
+    var v = (el('xlsx-status') && el('xlsx-status').value) || '';
+    return v;
+  }
+
+  function applyStatusFilter(rows, statusF) {
+    if (statusF !== 'sudah' && statusF !== 'belum') return rows;
+    return rows.filter(function (r) {
+      var lunas = !!r.lunas;
+      return statusF === 'sudah' ? lunas : !lunas;
+    });
+  }
+
   function downloadXLSX(rows, fname) {
     if (!global.AbsensiXLSX) { toast('Modul XLSX belum termuat.', 'red'); return; }
     if (!rows.length) { toast('Tidak ada data untuk diunduh.', 'red'); return; }
@@ -175,7 +189,7 @@
   }
 
   function xlsxHarian() {
-    var rows = filteredRows();
+    var rows = applyStatusFilter(filteredRows(), statusFilterOf());
     downloadXLSX(rows, 'Absensi_' + ((el('rekap-tanggal') && el('rekap-tanggal').value) || today()) + '.xlsx');
   }
 
@@ -187,6 +201,7 @@
     var kelasF = (el('xlsx-kelas') && el('xlsx-kelas').value) || '';
     var bahasaF = (el('xlsx-bahasa') && el('xlsx-bahasa').value) || '';
     var namaF = ((el('xlsx-nama') && el('xlsx-nama').value) || '').trim().toLowerCase();
+    var statusF = statusFilterOf();
     var dupOnly = el('xlsx-dup') && el('xlsx-dup').checked;
     var pass = ((el('xlsx-pass') && el('xlsx-pass').value) || '').trim();
     if (!pass && H().adminPass) pass = String(H().adminPass() || '').trim();
@@ -217,6 +232,8 @@
         if (kelasF && String(r.tingkat || '') !== String(kelasF)) return false;
         if (bahasaF && r.bahasa !== bahasaF) return false;
         if (namaF && String(r.nama || '').toLowerCase().indexOf(namaF) === -1) return false;
+        if (statusF === 'sudah' && !r.lunas) return false;
+        if (statusF === 'belum' && r.lunas) return false;
         return true;
       });
 

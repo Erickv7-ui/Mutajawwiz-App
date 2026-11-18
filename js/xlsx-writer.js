@@ -3,7 +3,7 @@
  * Bikin workbook dengan styling persis template resmi (contoh.xlsx):
  *   - Header: No | Name Of Offenders (B:C) | Date | Class | Room | Speaking (G:H) | Group (I:J)
  *   - Fill kuning (No/Date/Class/Room/Group) + merah (Name/Speaking)
- *   - Font header: Times New Roman 11 bold | Data: Calibri 12
+ *   - Font header: Times New Roman 11 bold | Data: Times New Roman 11
  *   - Border tipis semua sel, merge B:C, G:H, I:J di tiap baris
  *   - Tinggi baris 23 (header) / 20 (data), format tanggal dd-mm-yyyy (tanpa jam)
  * Zip ditulis manual (metode STORED + CRC32) — jadi jalan di browser & Node.
@@ -129,7 +129,7 @@
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
     '<numFmts count="1"><numFmt numFmtId="164" formatCode="dd-mm-yyyy"/></numFmts>' +
     '<fonts count="2">' +
-    '<font><sz val="12"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>' +
+    '<font><sz val="11"/><color theme="1"/><name val="Times New Roman"/><family val="1"/></font>' +
     '<font><b/><sz val="11"/><color theme="1"/><name val="Times New Roman"/><family val="1"/></font>' +
     '</fonts>' +
     '<fills count="4">' +

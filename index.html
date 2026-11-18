@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=68">
-  <link rel="stylesheet" href="css/theme.css?v=68">
+  <link rel="stylesheet" href="css/app.css?v=69">
+  <link rel="stylesheet" href="css/theme.css?v=69">
   <script>
     /* Terapkan tema sebelum paint supaya tidak berkedip */
     (function () {
@@ -758,7 +758,7 @@
             <span class="tag bg-[#FFFDF8] text-black">1 sheet per tanggal</span>
           </div>
           <div class="p-5 space-y-4">
-            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div>
                 <label class="lbl" for="xlsx-dari">Dari Tanggal</label>
                 <input type="date" id="xlsx-dari" class="field">
@@ -782,6 +782,14 @@
                   <option>Indonesian</option><option>Javanese</option>
                 </select>
               </div>
+              <div>
+                <label class="lbl" for="xlsx-status">Status Bayar</label>
+                <select id="xlsx-status" class="field">
+                  <option value="">Semua status</option>
+                  <option value="sudah">Sudah bayar (lunas)</option>
+                  <option value="belum">Belum bayar</option>
+                </select>
+              </div>
             </div>
             <div class="grid sm:grid-cols-2 gap-3">
               <div>
@@ -803,7 +811,7 @@
             </div>
             <button id="xlsx-btn" class="btn btn-green">Unduh XLSX</button>
             <p class="text-[11px] font-bold text-black/60 leading-relaxed">
-              Format kolom: No | Name Of Offenders | Date | Class | Room | Speaking | Group.
+              Format kolom: No | Name Of Offenders | Date | Class | Room | Speaking | Group. Font Times New Roman 11.
               Group: Javanese = Extreme, Indonesian = Medium. Room diambil dari nomor kamar.
             </p>
           </div>
@@ -1267,12 +1275,12 @@
     </div>
   </div>
 
-  <script src="js/api.js?v=68"></script>
-  <script src="js/xlsx-writer.js?v=68"></script>
-  <script src="js/rekap.js?v=68"></script>
-  <script src="js/theme.js?v=68"></script>
-  <script src="js/db.js?v=68"></script>
-  <script src="js/auth.js?v=68"></script>
-  <script src="js/spa.js?v=68"></script>
+  <script src="js/api.js?v=69"></script>
+  <script src="js/xlsx-writer.js?v=69"></script>
+  <script src="js/rekap.js?v=69"></script>
+  <script src="js/theme.js?v=69"></script>
+  <script src="js/db.js?v=69"></script>
+  <script src="js/auth.js?v=69"></script>
+  <script src="js/spa.js?v=69"></script>
 </body>
 </html>
