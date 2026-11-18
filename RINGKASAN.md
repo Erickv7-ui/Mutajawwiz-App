@@ -645,3 +645,22 @@ Alur klien (`hapusLogSatu(id)` di `js/spa.js`):
 5. Sukses: baris dibuang dari `allLogs`, entri `pendingSync` ikut dibuang (biar tidak diunggah ulang), localStorage disimpan, semua tampilan di-render ulang.
 
 Verifikasi produksi v63: log uji `ZZ TEST HAPUS` (tgl 2026-11-18) dibuat lewat API → headless Edge klik tombol Hapus di dashboard → baris hilang, toast "Log absen dihapus.", `bootstrap` balik 121 → 120, nol sisa nama uji. Master `anggota` 724 tidak disentuh.
+
+### 18 Nov 2026 — v64: ENTER = kolom berikutnya, ENTER di kolom terakhir = kirim
+
+Form input satuan sekarang bisa dipakai tanpa mouse:
+
+| Kolom | ENTER |
+|---|---|
+| Tanggal | fokus ke Petugas Pengabsen |
+| Petugas Pengabsen | fokus ke Cari Nama / Stambuk |
+| Cari Nama / Stambuk | fokus ke Ucapan (kalau anggota sudah terpilih) |
+| Ucapan (kolom terakhir) | **kirim laporan** = klik Simpan |
+
+Detail perilaku (`initEnterChain()` di `js/spa.js`, listener `keydown` di `#mode-satuan`):
+- Kolom readonly (stambuk/kelas/rayon/kamar) dilewati otomatis karena tidak pernah dapat fokus.
+- Di kolom pencarian, kalau belum ada anggota terpilih dan datalist masih punya saran, ENTER dibiarkan memilih saran dulu (perilaku browser) — ENTER berikutnya baru pindah kolom. Jadi tidak memutus autofill.
+- `Shift+Enter` di Ucapan tetap bikin baris baru (tidak mengirim).
+- Setelah laporan terkirim, form dikosongkan dan fokus balik ke Petugas Pengabsen supaya bisa langsung lanjut input berikutnya.
+
+Verifikasi produksi v64 (headless Edge, login password gerbang, halaman Input): fokus awal `inp-pengabsen` → ENTER → `inp-search` → ketik nama lengkap (stambuk 24549 terisi) → ENTER → `inp-ucapan` → ENTER → laporan tersimpan (toast "Tercatat: Aldendra Aqeela Benzema"), `inp-search` + `inp-ucapan` kosong, fokus balik `inp-pengabsen`. Log uji dihapus lagi lewat `deleteLog` (bootstrap 117 → 116).

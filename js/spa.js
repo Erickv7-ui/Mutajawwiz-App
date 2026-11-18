@@ -1064,7 +1064,7 @@
         document.getElementById('inp-search').value = '';
         document.getElementById('inp-ucapan').value = '';
         // Laporan sudah terkirim: kolom pengabsen dikosongkan untuk petugas berikutnya.
-        if (pengabsenEl) { pengabsenEl.value = ''; pengabsenEl.style.borderColor = ''; }
+        if (pengabsenEl) { pengabsenEl.value = ''; pengabsenEl.style.borderColor = ''; pengabsenEl.focus(); }
         syncSelectedMemberPreview();
         renderInputLogToday();
         renderDashboard();
@@ -1429,6 +1429,43 @@
       try { renderDashboard(); } catch (e) {}
       try { renderLaporan(); } catch (e) {}
       showToast('Log absen dihapus.', 'green');
+    }
+
+    /**
+     * ENTER = lompat ke kolom berikutnya di form input satuan.
+     * Kolom terakhir (Ucapan) → ENTER = kirim laporan (klik Simpan).
+     * Shift+Enter tetap bikin baris baru di textarea Ucapan.
+     */
+    const ENTER_CHAIN = ['inp-tanggal', 'inp-pengabsen', 'inp-search', 'inp-ucapan'];
+    function initEnterChain() {
+      const box = document.getElementById('mode-satuan');
+      if (!box) return;
+      box.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter' || ev.shiftKey || ev.ctrlKey || ev.altKey || ev.isComposing) return;
+        const el = ev.target;
+        if (!el || !el.id || ENTER_CHAIN.indexOf(el.id) === -1) return;
+        if (el.tagName === 'TEXTAREA' && ev.shiftKey) return;
+        if (el.id === 'inp-search') {
+          const stambuk = (document.getElementById('inp-stambuk')?.value || '').trim();
+          const optCount = document.getElementById('inp-datalist')?.options?.length || 0;
+          // Belum ada anggota terpilih & masih ada saran → biarkan ENTER memilih saran dulu.
+          if (!stambuk && optCount > 0) return;
+        }
+        ev.preventDefault();
+        const next = ENTER_CHAIN[ENTER_CHAIN.indexOf(el.id) + 1];
+        if (next) {
+          const nx = document.getElementById(next);
+          if (nx) {
+            nx.focus();
+            if (nx.tagName === 'INPUT' && nx.type !== 'date' && nx.select) {
+              try { nx.select(); } catch (e) {}
+            }
+          }
+          return;
+        }
+        const btn = document.getElementById('btn-simpan');
+        if (btn && !btn.disabled) btn.click();
+      });
     }
 
     async function toggleHidden(key) {
@@ -1958,6 +1995,7 @@
       document.getElementById('inp-tanggal').addEventListener('change', renderInputLogToday);
       document.querySelectorAll('input[name="inp-bahasa"]').forEach(r => r.addEventListener('change', updateRadioCardStyles));
       document.getElementById('btn-simpan').addEventListener('click', handleSingleSave);
+      initEnterChain();
 
       // Input sub-modes
       document.getElementById('btn-mode-satuan').addEventListener('click', () => {
