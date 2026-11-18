@@ -628,3 +628,20 @@ Perilaku klien (`js/auth.js`):
 - Hint "Password default: 123456" hilang otomatis begitu server bilang `custom: true`.
 
 Verifikasi produksi (v62): `webpass` custom=false → login `123456` 200, password ngawur 401 → `webpass_set` 200 → password lama 401, password baru 200, status custom=true → password lama salah saat ganti 401. Data uji dihapus lagi (`DELETE FROM meta WHERE k='webpass'`), jadi kondisi sekarang: **password default `123456`** dan siap diganti dari PC mana pun. Cek klien headless: gerbang tampil, hint tampil, klien memanggil `?action=webpass`, nol error konsol.
+
+### 18 Nov 2026 — v63: tombol hapus log absen perorangan di web
+
+Sebelumnya `?action=deleteLog` cuma ada di backend, UI nol yang manggil — hapus log harus lewat `wrangler d1 execute`. Sekarang tiap baris log punya tombol **Hapus**.
+
+Tempat tombol:
+- Dashboard → tabel "Log Masuk Hari Ini" (kolom **Aksi** baru).
+- Halaman Input Absen → daftar log tanggal terpilih (mengikuti filter tanggal, jadi tanggal lampau juga bisa dihapus).
+
+Alur klien (`hapusLogSatu(id)` di `js/spa.js`):
+1. Wajib sesi PIN Admin terbuka (`isAdminUnlocked`); kalau belum, popup PIN muncul otomatis.
+2. Wajib mode cloud (mode lokal ditolak, karena hapus harus di server).
+3. Konfirmasi `confirm()` berisi nama, kelas, tanggal, jam, pengabsen.
+4. `POST ?action=deleteLog {id_log, password}` — password = PIN/Server Pass yang sudah dipegang sesi admin.
+5. Sukses: baris dibuang dari `allLogs`, entri `pendingSync` ikut dibuang (biar tidak diunggah ulang), localStorage disimpan, semua tampilan di-render ulang.
+
+Verifikasi produksi v63: log uji `ZZ TEST HAPUS` (tgl 2026-11-18) dibuat lewat API → headless Edge klik tombol Hapus di dashboard → baris hilang, toast "Log absen dihapus.", `bootstrap` balik 121 → 120, nol sisa nama uji. Master `anggota` 724 tidak disentuh.

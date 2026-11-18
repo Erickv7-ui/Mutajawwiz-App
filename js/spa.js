@@ -834,7 +834,7 @@
       // Today Log Table
       const todayBody = document.getElementById('dash-log-today');
       todayBody.innerHTML = todayLogs.length === 0
-        ? `<tr><td colspan="8" class="text-center text-xs text-black/60 py-6">Belum ada pelanggaran tercatat hari ini (${today}).</td></tr>`
+        ? `<tr><td colspan="9" class="text-center text-xs text-black/60 py-6">Belum ada pelanggaran tercatat hari ini (${today}).</td></tr>`
         : todayLogs.slice().reverse().map((l, idx) => {
             const stambukVal = l.stambuk || MASTER_ANGGOTA.find(a => a.nama === l.nama)?.stambuk || '-';
             return `
@@ -851,6 +851,9 @@
                 </span>
               </td>
               <td class="text-xs italic text-black/80">${escapeHtml(l.ucapan || '-')}</td>
+              <td class="text-right">
+                <button onclick="hapusLogSatu('${escapeHtml(String(l.id_log || l.id || ''))}')" class="btn btn-red py-1 px-2 text-[10px]" title="Hapus log absen ini">Hapus</button>
+              </td>
             </tr>
           `;
           }).join('');
@@ -1096,6 +1099,7 @@
               <span class="tag ${l.bahasa === 'Javanese' ? 'bg-[#FF4D4D] text-white' : 'bg-[#00D2FF] text-black'} shrink-0">
                 ${escapeHtml(l.bahasa)}
               </span>
+              <button onclick="hapusLogSatu('${escapeHtml(String(l.id_log || l.id || ''))}')" class="btn btn-red py-1 px-2 text-[10px] shrink-0" title="Hapus log absen ini">Hapus</button>
             </div>
           `;
           }).join('');
@@ -1387,6 +1391,44 @@
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'LUNAS MASAL'; }
       }
+    }
+
+    /**
+     * Hapus SATU log absensi (perorangan). Server menolak deleteLog tanpa
+     * kredensial admin, jadi wajib sesi admin terbuka + PIN / Server Pass.
+     */
+    async function hapusLogSatu(id) {
+      const idn = String(id || '').trim();
+      if (!idn) { showToast('ID log tidak valid.', 'red'); return; }
+      if (!isAdminUnlocked) {
+        showToast('Buka kunci PIN Admin dulu untuk menghapus log.', 'yellow');
+        try { openPinModal(); } catch (e) {}
+        return;
+      }
+      if (!cloudOn()) { showToast('Mode Lokal aktif — hapus log butuh cloud.', 'red'); return; }
+      const l = allLogs.find(x => String(x.id_log || x.id) === idn);
+      if (!l) { showToast('Log tidak ditemukan (mungkin sudah dihapus).', 'red'); return; }
+      const info = `${l.nama || '-'} • ${l.kelas || '-'}\nTanggal ${l.tgl || '-'}${l.waktu ? ' ' + l.waktu : ''}\nPengabsen: ${l.pengabsen || '-'}`;
+      if (!window.confirm('Hapus log absen ini permanen?\n\n' + info)) return;
+      try {
+        await window.LISApi.deleteLog({ id_log: idn, password: serverSecret() });
+      } catch (err) {
+        showToast(err && err.status === 401
+          ? 'PIN / Server Pass salah.'
+          : 'Gagal hapus log: ' + ((err && err.message) || 'error'), 'red');
+        return;
+      }
+      allLogs = allLogs.filter(x => String(x.id_log || x.id) !== idn);
+      try {
+        pendingSync = pendingSync.filter(r => String(r.id || r.id_log || '') !== idn);
+        savePending();
+      } catch (e) {}
+      saveLogs();
+      try { renderInputLogToday(); } catch (e) {}
+      try { renderTagihan(); } catch (e) {}
+      try { renderDashboard(); } catch (e) {}
+      try { renderLaporan(); } catch (e) {}
+      showToast('Log absen dihapus.', 'green');
     }
 
     async function toggleHidden(key) {
