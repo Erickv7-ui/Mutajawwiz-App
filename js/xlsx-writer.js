@@ -90,7 +90,7 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
   }
 
-  var COLS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  var COLS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
   function cellRef(colIdx, row) { return COLS[colIdx] + row; }
 
   function strCell(colIdx, row, style, val) {
@@ -169,11 +169,12 @@
       '<col min="5" max="6" width="6.45" customWidth="1"/>' +
       '<col min="7" max="8" width="10.63" customWidth="1"/>' +
       '<col min="9" max="10" width="9.36" customWidth="1"/>' +
+      '<col min="11" max="11" width="7.5" customWidth="1"/>' +
       '</cols>' +
       '<sheetData>';
 
     // ---- header ----
-    xml += '<row r="1" ht="23" customHeight="1" spans="1:10">';
+    xml += '<row r="1" ht="23" customHeight="1" spans="1:11">';
     xml += strCell(0, 1, 1, 'No');
     xml += strCell(1, 1, 2, 'Name Of Offenders');
     xml += '<c r="C1" s="2"/>';
@@ -184,6 +185,7 @@
     xml += '<c r="H1" s="2"/>';
     xml += strCell(8, 1, 1, 'Group');
     xml += '<c r="J1" s="1"/>';
+    xml += strCell(10, 1, 1, 'Jumlah');
     xml += '</row>';
 
     var merges = ['B1:C1', 'G1:H1', 'I1:J1'];
@@ -193,8 +195,9 @@
       var r = i + 2;
       var d = rows[i];
       var serial = dateToSerial(d.date);
+      var jumlah = Math.max(1, parseInt(d.jumlah, 10) || 1);
 
-      xml += '<row r="' + r + '" ht="20" customHeight="1" spans="1:10">';
+      xml += '<row r="' + r + '" ht="20" customHeight="1" spans="1:11">';
       xml += '<c r="A' + r + '" s="3"><v>' + (i + 1) + '</v></c>';
       xml += strCell(1, r, 4, d.nama || '');
       xml += '<c r="C' + r + '" s="4"/>';
@@ -209,6 +212,7 @@
       xml += '<c r="H' + r + '" s="3"/>';
       xml += strCell(8, r, 3, d.group || '');
       xml += '<c r="J' + r + '" s="3"/>';
+      xml += '<c r="K' + r + '" s="3"><v>' + jumlah + '</v></c>';
       xml += '</row>';
 
       merges.push('B' + r + ':C' + r, 'G' + r + ':H' + r, 'I' + r + ':J' + r);
@@ -220,6 +224,120 @@
     xml += '</mergeCells>';
     xml += '</worksheet>';
     return xml;
+  }
+
+  // ============================ REKAP PEMBAYARAN ============================
+  /**
+   * Sheet rekap pembayaran: 1 sheet, 1 baris per tagihan (tgl + santri).
+   * rows: [{ tgl, stambuk, nama, kelas, bahasa, jumlah, total, status, penerima }]
+   * Kolom: No | Tanggal | Stambuk | Nama | Kelas | Bahasa | Jumlah Kena | Total Denda | Status Bayar | Penerima
+   */
+  function buildPaySheetXml(rows) {
+    var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<cols>' +
+      '<col min="1" max="1" width="6" customWidth="1"/>' +
+      '<col min="2" max="2" width="13" customWidth="1"/>' +
+      '<col min="3" max="3" width="11" customWidth="1"/>' +
+      '<col min="4" max="4" width="26" customWidth="1"/>' +
+      '<col min="5" max="5" width="7" customWidth="1"/>' +
+      '<col min="6" max="6" width="12" customWidth="1"/>' +
+      '<col min="7" max="7" width="9" customWidth="1"/>' +
+      '<col min="8" max="8" width="13" customWidth="1"/>' +
+      '<col min="9" max="9" width="13" customWidth="1"/>' +
+      '<col min="10" max="10" width="18" customWidth="1"/>' +
+      '</cols>' +
+      '<sheetData>';
+
+    // header
+    var heads = ['No', 'Tanggal', 'Stambuk', 'Nama', 'Kelas', 'Bahasa', 'Jumlah Kena', 'Total Denda', 'Status Bayar', 'Penerima'];
+    xml += '<row r="1" ht="23" customHeight="1" spans="1:10">';
+    for (var h = 0; h < heads.length; h++) xml += strCell(h, 1, 1, heads[h]);
+    xml += '</row>';
+
+    for (var i = 0; i < rows.length; i++) {
+      var r = i + 2;
+      var d = rows[i];
+      var serial = dateToSerial(d.tgl);
+      var jumlah = Math.max(1, parseInt(d.jumlah, 10) || 1);
+      var total = Math.max(0, parseInt(d.total, 10) || 0);
+      var status = d.status || '';
+
+      xml += '<row r="' + r + '" ht="20" customHeight="1" spans="1:10">';
+      xml += '<c r="A' + r + '" s="3"><v>' + (i + 1) + '</v></c>';
+      if (serial !== null) {
+        xml += '<c r="B' + r + '" s="5"><v>' + serial + '</v></c>';
+      } else {
+        xml += strCell(1, r, 5, String(d.tgl || ''));
+      }
+      xml += strCell(2, r, 3, String(d.stambuk || ''));
+      xml += strCell(3, r, 4, String(d.nama || ''));
+      xml += autoCell(4, r, 3, d.kelas);
+      xml += strCell(5, r, 3, String(d.bahasa || ''));
+      xml += '<c r="G' + r + '" s="3"><v>' + jumlah + '</v></c>';
+      xml += '<c r="H' + r + '" s="3"><v>' + total + '</v></c>';
+      xml += strCell(8, r, 3, status);
+      xml += strCell(9, r, 4, String(d.penerima || ''));
+      xml += '</row>';
+    }
+
+    xml += '</sheetData></worksheet>';
+    return xml;
+  }
+
+  /**
+   * sheets: [{ name, rows }] — biasanya 1 sheet. return Blob (.xlsx)
+   * Sama seperti buildWorkbook tapi pakai buildPaySheetXml (kolom rekap pembayaran).
+   */
+  function buildPayWorkbook(sheets) {
+    sheets = sheets || [];
+    var used = {};
+    var files = [];
+    var i;
+
+    var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>';
+    for (i = 0; i < sheets.length; i++) {
+      ct += '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+    }
+    ct += '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+    ct += '</Types>';
+    files.push({ name: '[Content_Types].xml', data: textToU8(ct) });
+
+    files.push({
+      name: '_rels/.rels',
+      data: textToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+        '</Relationships>')
+    });
+
+    var wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
+    var wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+    for (i = 0; i < sheets.length; i++) {
+      var nm = sanitizeSheetName(sheets[i].name, used);
+      wb += '<sheet name="' + xmlEsc(nm) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+      wbRels += '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+    }
+    var stylesId = 'rId' + (sheets.length + 1);
+    wbRels += '<Relationship Id="' + stylesId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>';
+    wb += '</sheets></workbook>';
+    wbRels += '</Relationships>';
+
+    files.push({ name: 'xl/workbook.xml', data: textToU8(wb) });
+    files.push({ name: 'xl/_rels/workbook.xml.rels', data: textToU8(wbRels) });
+    files.push({ name: 'xl/styles.xml', data: textToU8(STYLES_XML) });
+
+    for (i = 0; i < sheets.length; i++) {
+      files.push({ name: 'xl/worksheets/sheet' + (i + 1) + '.xml', data: textToU8(buildPaySheetXml(sheets[i].rows)) });
+    }
+
+    return makeZip(files);
   }
 
   // ============================ NAMA SHEET ============================
@@ -315,6 +433,7 @@
   // ============================ EXPORT ============================
   global.AbsensiXLSX = {
     buildWorkbook: buildWorkbook,
+    buildPayWorkbook: buildPayWorkbook,
     sheetNameForDate: sheetNameForDate,
     downloadBlob: downloadBlob
   };

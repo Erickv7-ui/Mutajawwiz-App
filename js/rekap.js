@@ -141,28 +141,40 @@
     });
   }
 
+  /**
+   * Satu sheet untuk semua tanggal: tiap baris = 1 santri pada 1 tanggal.
+   * Duplikat (santri yg sama, tanggal yg sama) dijumlah ke kolom 'jumlah'
+   * (berapa kali kena hari itu) — bukan ditulis 2 baris.
+   * Urut: kelas tertinggi dulu, lalu nama, lalu tanggal.
+   */
   function buildSheets(rows) {
-    var byDate = {};
+    var byKey = {};
     rows.forEach(function (r) {
       var d = dOnly(r.tgl || r.timestamp);
-      (byDate[d] = byDate[d] || []).push(r);
+      var k = d + '__' + String(r.stambuk || r.nama || '').trim().toLowerCase();
+      if (!byKey[k]) {
+        byKey[k] = {
+          nama: r.nama,
+          date: d,
+          kelas: r.tingkat || r.kelas || '-',
+          kamar: roomOf(r),
+          speaking: speakingOf(r),
+          group: groupOf(r),
+          jumlah: 0,
+          _ts: String(r.timestamp || r.waktu || '')
+        };
+      }
+      byKey[k].jumlah++;
     });
-    return Object.keys(byDate).sort().map(function (d) {
-      var list = sortByKelas(byDate[d]);
-      return {
-        name: global.AbsensiXLSX.sheetNameForDate(d),
-        rows: list.map(function (r) {
-          return {
-            nama: r.nama,
-            date: d,
-            kelas: r.tingkat || r.kelas || '-',
-            kamar: roomOf(r),
-            speaking: speakingOf(r),
-            group: groupOf(r),
-          };
-        }),
-      };
+    var list = Object.keys(byKey).map(function (k) { return byKey[k]; });
+    list.sort(function (a, b) {
+      var ra = kelasRank(a.kelas), rb = kelasRank(b.kelas);
+      if (ra !== rb) return rb - ra;
+      var na = String(a.nama || '').toLowerCase(), nb = String(b.nama || '').toLowerCase();
+      if (na !== nb) return na < nb ? -1 : 1;
+      return String(a.date).localeCompare(String(b.date));
     });
+    return [{ name: 'Rekap Absensi', rows: list }];
   }
 
   /** Filter status bayar dari panel export: '' semua | 'sudah' lunas | 'belum' belum lunas */
@@ -185,7 +197,8 @@
     var sheets = buildSheets(rows);
     var blob = global.AbsensiXLSX.buildWorkbook(sheets);
     global.AbsensiXLSX.downloadBlob(blob, fname);
-    toast(sheets.length + ' sheet, ' + rows.length + ' baris diunduh.', 'green');
+    var total = sheets.reduce(function (n, s) { return n + s.rows.length; }, 0);
+    toast(sheets.length + ' sheet, ' + total + ' baris diunduh.', 'green');
   }
 
   function xlsxHarian() {
@@ -263,6 +276,86 @@
     }
   }
 
+  // ============================ REKAP PEMBAYARAN (XLSX) ============================
+  /**
+   * Export XLSX rekap pembayaran: 1 sheet, 1 baris per tagihan (tgl + santri).
+   * Kolom: No | Tanggal | Stambuk | Nama | Kelas | Bahasa | Jumlah Kena | Total Denda | Status Bayar | Penerima
+   * Duplikat pelanggaran hari yg sama sudah otomatis jadi 1 baris (Jumlah Kena = jumlah log).
+   * Filter lengkap: rentang tanggal, kelas, bahasa, nama, status bayar.
+   * Data ambil dari tagihan terkonsolidasi (sudah termasuk biaya kertas) di sisi klien.
+   */
+  function bahasaOfBill(b) {
+    var j = b.java || 0, i = b.indo || 0;
+    if (j > 0 && i > 0) return 'Indonesian & Javanese';
+    return j > 0 ? 'Javanese' : 'Indonesian';
+  }
+
+  async function payXlsxRange() {
+    var X = global.AbsensiXLSX;
+    if (!X || !X.buildPayWorkbook) { toast('Modul XLSX belum termuat.', 'red'); return; }
+    var dari = (el('pay-xlsx-dari') && el('pay-xlsx-dari').value) || '';
+    var hingga = (el('pay-xlsx-hingga') && el('pay-xlsx-hingga').value) || '';
+    var kelasF = (el('pay-xlsx-kelas') && el('pay-xlsx-kelas').value) || '';
+    var bahasaF = (el('pay-xlsx-bahasa') && el('pay-xlsx-bahasa').value) || '';
+    var namaF = ((el('pay-xlsx-nama') && el('pay-xlsx-nama').value) || '').trim().toLowerCase();
+    var statusF = (el('pay-xlsx-status') && el('pay-xlsx-status').value) || '';
+    var btn = el('pay-xlsx-btn');
+
+    if (!dari || !hingga) { toast('Pilih rentang tanggal dulu.', 'red'); return; }
+    if (dari > hingga) { toast('Tanggal awal harus lebih dulu.', 'red'); return; }
+
+    var getBills = H().getBills;
+    if (typeof getBills !== 'function') { toast('Data tagihan belum siap.', 'red'); return; }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'MENYIAPKAN...'; }
+    try {
+      var bills = getBills() || [];
+      var rows = bills.filter(function (b) {
+        if (b.hidden) return false;            // hidden = diarsipkan, tidak masuk rekap pembayaran
+        var d = String(b.tgl || '').slice(0, 10);
+        if (d < dari || d > hingga) return false;
+        if (kelasF && String(kelasRank(b.kelas)) !== String(kelasF)) return false;
+        if (bahasaF === 'Javanese' && !(b.java > 0)) return false;
+        if (bahasaF === 'Indonesian' && !(b.indo > 0)) return false;
+        if (namaF && String(b.nama || '').toLowerCase().indexOf(namaF) === -1) return false;
+        if (statusF === 'sudah' && !b.lunas) return false;
+        if (statusF === 'belum' && b.lunas) return false;
+        return true;
+      }).map(function (b) {
+        return {
+          tgl: String(b.tgl || '').slice(0, 10),
+          stambuk: b.stambuk || '',
+          nama: b.nama || '',
+          kelas: b.kelas || '-',
+          bahasa: bahasaOfBill(b),
+          jumlah: (b.logs && b.logs.length) || 1,
+          total: Math.round(Number(b.totalDenda) || 0),
+          status: b.lunas ? 'Sudah Bayar' : 'Belum Bayar',
+          penerima: b.penerima || ''
+        };
+      });
+
+      // urut kelas tertinggi dulu, lalu nama, lalu tanggal
+      rows.sort(function (a, b) {
+        var ra = kelasRank(a.kelas), rb = kelasRank(b.kelas);
+        if (ra !== rb) return rb - ra;
+        var na = String(a.nama).toLowerCase(), nb = String(b.nama).toLowerCase();
+        if (na !== nb) return na < nb ? -1 : 1;
+        return String(a.tgl).localeCompare(String(b.tgl));
+      });
+
+      if (!rows.length) { toast('Tidak ada tagihan untuk filter ini.', 'red'); return; }
+
+      var blob = X.buildPayWorkbook([{ name: 'Rekap Pembayaran', rows: rows }]);
+      X.downloadBlob(blob, 'Rekap_Pembayaran_' + dari + '_sd_' + hingga + '.xlsx');
+      toast(rows.length + ' tagihan diunduh.', 'green');
+    } catch (err) {
+      toast('Gagal buat XLSX pembayaran: ' + err.message, 'red');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Unduh XLSX Pembayaran'; }
+    }
+  }
+
   function syncAllToggle() {
     var all = el('xlsx-semua');
     var on = all && all.checked;
@@ -274,7 +367,7 @@
 
   function init() {
     var t = today();
-    ['rekap-tanggal', 'xlsx-dari', 'xlsx-hingga'].forEach(function (id) {
+    ['rekap-tanggal', 'xlsx-dari', 'xlsx-hingga', 'pay-xlsx-dari', 'pay-xlsx-hingga'].forEach(function (id) {
       var e = el(id);
       if (e && !e.value) e.value = t;
     });
@@ -292,6 +385,7 @@
     bind('rekap-btn-csv', 'click', function () { downloadCSV(filteredRows()); });
     bind('rekap-btn-xlsx', 'click', xlsxHarian);
     bind('xlsx-btn', 'click', xlsxRange);
+    bind('pay-xlsx-btn', 'click', payXlsxRange);
     bind('xlsx-semua', 'change', syncAllToggle);
 
     syncAllToggle();

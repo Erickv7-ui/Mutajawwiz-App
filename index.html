@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=69">
-  <link rel="stylesheet" href="css/theme.css?v=69">
+  <link rel="stylesheet" href="css/app.css?v=71">
+  <link rel="stylesheet" href="css/theme.css?v=71">
   <script>
     /* Terapkan tema sebelum paint supaya tidak berkedip */
     (function () {
@@ -755,7 +755,7 @@
         <div class="box overflow-hidden" id="xlsx-card">
           <div class="card-band bg-[#B6EFC8] px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap">
             <h3 class="text-sm font-extrabold text-black">Export XLSX Template Resmi</h3>
-            <span class="tag bg-[#FFFDF8] text-black">1 sheet per tanggal</span>
+            <span class="tag bg-[#FFFDF8] text-black">1 sheet semua tanggal</span>
           </div>
           <div class="p-5 space-y-4">
             <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -811,8 +811,65 @@
             </div>
             <button id="xlsx-btn" class="btn btn-green">Unduh XLSX</button>
             <p class="text-[11px] font-bold text-black/60 leading-relaxed">
-              Format kolom: No | Name Of Offenders | Date | Class | Room | Speaking | Group. Font Times New Roman 11.
+              Format kolom: No | Name Of Offenders | Date | Class | Room | Speaking | Group | Jumlah. Font Times New Roman 11.
               Group: Javanese = Extreme, Indonesian = Medium. Room diambil dari nomor kamar.
+              Duplikat (santri sama, tanggal sama) jadi 1 baris, jumlah kena di kolom Jumlah.
+            </p>
+          </div>
+        </div>
+
+        <!-- EXPORT XLSX REKAP PEMBAYARAN -->
+        <div class="box overflow-hidden" id="pay-xlsx-card">
+          <div class="card-band bg-[#B6D9FC] px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap">
+            <h3 class="text-sm font-extrabold text-black">Export XLSX Rekap Pembayaran</h3>
+            <span class="tag bg-[#FFFDF8] text-black">1 sheet • status bayar</span>
+          </div>
+          <div class="p-5 space-y-4">
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label class="lbl" for="pay-xlsx-dari">Dari Tanggal</label>
+                <input type="date" id="pay-xlsx-dari" class="field">
+              </div>
+              <div>
+                <label class="lbl" for="pay-xlsx-hingga">Sampai Tanggal</label>
+                <input type="date" id="pay-xlsx-hingga" class="field">
+              </div>
+              <div>
+                <label class="lbl" for="pay-xlsx-kelas">Kelas / Tingkat</label>
+                <select id="pay-xlsx-kelas" class="field">
+                  <option value="">Semua Kelas</option>
+                  <option value="1">Tingkat 1</option><option value="2">Tingkat 2</option>
+                  <option value="3">Tingkat 3</option><option value="4">Tingkat 4</option>
+                </select>
+              </div>
+              <div>
+                <label class="lbl" for="pay-xlsx-bahasa">Bahasa</label>
+                <select id="pay-xlsx-bahasa" class="field">
+                  <option value="">Semua Bahasa</option>
+                  <option value="Indonesian">Indonesian</option><option value="Javanese">Javanese</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div>
+                <label class="lbl" for="pay-xlsx-nama">Filter Nama (opsional)</label>
+                <input type="text" id="pay-xlsx-nama" class="field" placeholder="cari nama tertentu">
+              </div>
+              <div>
+                <label class="lbl" for="pay-xlsx-status">Status Bayar</label>
+                <select id="pay-xlsx-status" class="field">
+                  <option value="">Semua status</option>
+                  <option value="sudah">Sudah bayar (lunas)</option>
+                  <option value="belum">Belum bayar</option>
+                </select>
+              </div>
+              <div class="flex items-end">
+                <button id="pay-xlsx-btn" class="btn btn-green w-full">Unduh XLSX Pembayaran</button>
+              </div>
+            </div>
+            <p class="text-[11px] font-bold text-black/60 leading-relaxed">
+              Kolom: No | Tanggal | Stambuk | Nama | Kelas | Bahasa | Jumlah Kena | Total Denda | Status Bayar | Penerima. Font Times New Roman 11.
+              1 baris per tagihan (tgl + santri). Total Denda sudah termasuk biaya kertas hukuman. Tagihan ter-hidden tidak masuk.
             </p>
           </div>
         </div>
@@ -1275,12 +1332,12 @@
     </div>
   </div>
 
-  <script src="js/api.js?v=69"></script>
-  <script src="js/xlsx-writer.js?v=69"></script>
-  <script src="js/rekap.js?v=69"></script>
-  <script src="js/theme.js?v=69"></script>
-  <script src="js/db.js?v=69"></script>
-  <script src="js/auth.js?v=69"></script>
-  <script src="js/spa.js?v=69"></script>
+  <script src="js/api.js?v=71"></script>
+  <script src="js/xlsx-writer.js?v=71"></script>
+  <script src="js/rekap.js?v=71"></script>
+  <script src="js/theme.js?v=71"></script>
+  <script src="js/db.js?v=71"></script>
+  <script src="js/auth.js?v=71"></script>
+  <script src="js/spa.js?v=71"></script>
 </body>
 </html>
