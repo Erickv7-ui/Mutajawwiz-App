@@ -713,3 +713,34 @@ Verifikasi produksi v67 (headless Edge + API):
 Verifikasi produksi v69 (headless Edge, rentang 2026-11-01 s/d 2026-11-18):
 - `belum` → 98 baris / 9 sheet; `sudah` → 54 baris / 1 sheet; `semua` → 152 baris / 10 sheet. Angka sama persis dengan `/api?action=logs` (152 total, 54 lunas).
 - `xl/styles.xml` hasil unduhan: dua font `Times New Roman` ukuran `11`.
+
+
+## v70–v71 — Rekap XLSX 1-sheet + kolom duplikat + rekap pembayaran baru
+
+Revisi ekspor XLSX sesuai permintaan: rekap log multi-tanggal jadi 1 sheet (bukan per-hari beda sheet), duplikat di kolom baru, plus fitur baru ekspor rekap pembayaran dengan filter lengkap.
+
+### Rekap log (Export XLSX Template Resmi) — js/rekap.js buildSheets + js/xlsx-writer.js
+- 1 sheet untuk semua tanggal (sebelumnya 1 sheet per tanggal). Nama sheet "Rekap Absensi".
+- Duplikat dijumlah ke kolom baru Jumlah (kolom K): santri yang sama kena >1 kali di tanggal sama -> 1 baris, kolom Jumlah = berapa kali kena. Bukan 2 baris.
+- Urut per kelas dari atas (kelas tertinggi dulu), lalu nama, lalu tanggal (kelasRank desc).
+- Header: No | Name Of Offenders | Date | Class | Room | Speaking | Group | Jumlah.
+- xlsxHarian() dan xlsxRange() tetap pakai filter status/kelas/bahasa/nama/duplikat lama. Checkbox "Hanya baris duplikat" sekarang hanya baris santri kena >1 di hari sama.
+- Toast tampilkan jumlah baris terkonsolidasi (bukan raw log).
+- Kolom K: col min=11, header strCell(10,1,1,'Jumlah'), data c r=K{r}. COLS diperpanjang ke K.
+
+### Rekap pembayaran baru — panel #pay-xlsx-card di index.html, payXlsxRange() di js/rekap.js, buildPayWorkbook() di js/xlsx-writer.js
+- Fitur ekspor XLSX khusus rekap pembayaran (terpisah dari rekap log), kartu biru langit di halaman Laporan.
+- 1 sheet, 1 baris per tagihan (key = tanggal + santri). Duplikat pelanggaran hari sama otomatis 1 baris; jumlah pelanggaran di kolom Jumlah Kena.
+- Kolom: No | Tanggal | Stambuk | Nama | Kelas | Bahasa | Jumlah Kena | Total Denda | Status Bayar | Penerima.
+- Total Denda sudah termasuk biaya kertas hukuman (getConsolidatedTagihan.totalDenda).
+- Filter lengkap: rentang tanggal, kelas/tingkat, bahasa (Indonesian/Javanese), nama, status bayar (Semua/Sudah/Belum). Data dari tagihan terkonsolidasi sisi klien (getBills()).
+- Tagihan ter-hidden tidak masuk rekap pembayaran.
+- Urut: kelas tertinggi dulu, lalu nama, lalu tanggal.
+- Font Times New Roman 11.
+
+### Verifikasi produksi v71 (headless Edge, rentang 2026-11-01 s/d 2026-11-18)
+- Rekap log (status semua): 1 sheet, 141 baris (149 log mentah -> 141 baris terkonsolidasi). Header ada Jumlah. Font TNR 11. Toast "1 SHEET, 141 BARIS DIUNDUH".
+- Rekap pembayaran status belum: 1 sheet, 17 baris. Cocok api logs (17 tagihan belum lunas non-hidden).
+- Rekap pembayaran status semua: 1 sheet, 90 baris (= 90 tagihan non-hidden total).
+
+Commit: fc76d6f (pushed). Produksi https://mutajawwiz.pages.dev = v71.
