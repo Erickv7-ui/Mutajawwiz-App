@@ -155,13 +155,30 @@
     '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
     '</styleSheet>';
 
+  // ============================ PAGE SETUP (A4 narrow, fit, freeze, filter) ============================
+  // A4 = paperSize 9; narrow margins = Excel "Narrow" preset; fitToWidth=1 agar semua kolom muat 1 halaman lebar.
+  function pageOpen(lastCell) {
+    return '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
+      '<dimension ref="A1:' + lastCell + '"/>' +
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="15"/>';
+  }
+  function filterXml(ref) { return '<autoFilter ref="' + ref + '"/>'; }
+  function printXml() {
+    return '<printOptions horizontalCentered="1"/>' +
+      '<pageMargins left="0.25" right="0.25" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>' +
+      '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0" horizontalDPI="300"/>';
+  }
+
   // ============================ WORKSHEET ============================
   /**
    * rows: array of { nama, date, kelas, kamar, speaking, group }
    */
   function buildSheetXml(rows) {
+    var lastRow = rows.length + 1;
     var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      pageOpen('K' + lastRow) +
       '<cols>' +
       '<col min="1" max="1" width="6.63" customWidth="1"/>' +
       '<col min="2" max="3" width="9.36" customWidth="1"/>' +
@@ -219,9 +236,11 @@
     }
 
     xml += '</sheetData>';
+    xml += filterXml('A1:K' + lastRow);
     xml += '<mergeCells count="' + merges.length + '">';
     for (var m = 0; m < merges.length; m++) xml += '<mergeCell ref="' + merges[m] + '"/>';
     xml += '</mergeCells>';
+    xml += printXml();
     xml += '</worksheet>';
     return xml;
   }
@@ -233,8 +252,10 @@
    * Kolom: No | Tanggal | Stambuk | Nama | Kelas | Bahasa | Jumlah Kena | Total Denda | Status Bayar | Penerima
    */
   function buildPaySheetXml(rows) {
+    var lastRow = rows.length + 1;
     var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      pageOpen('J' + lastRow) +
       '<cols>' +
       '<col min="1" max="1" width="6" customWidth="1"/>' +
       '<col min="2" max="2" width="13" customWidth="1"/>' +
@@ -281,7 +302,10 @@
       xml += '</row>';
     }
 
-    xml += '</sheetData></worksheet>';
+    xml += '</sheetData>';
+    xml += filterXml('A1:J' + lastRow);
+    xml += printXml();
+    xml += '</worksheet>';
     return xml;
   }
 

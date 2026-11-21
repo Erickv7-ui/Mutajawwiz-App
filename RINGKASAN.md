@@ -744,3 +744,29 @@ Revisi ekspor XLSX sesuai permintaan: rekap log multi-tanggal jadi 1 sheet (buka
 - Rekap pembayaran status semua: 1 sheet, 90 baris (= 90 tagihan non-hidden total).
 
 Commit: fc76d6f (pushed). Produksi https://mutajawwiz.pages.dev = v71.
+
+
+## v72 — XLSX A4 narrow + rapi (freeze/filter/fit) + penerima pembayaran jadi "ellerick"
+
+### Page setup A4 narrow di semua template XLSX
+Kedua builder (`buildSheetXml` rekap log + `buildPaySheetXml` rekap pembayaran) sekarang sisipkan page setup lewat helper `pageOpen(lastCell)`, `filterXml(ref)`, `printXml()` di `js/xlsx-writer.js`:
+- **A4** (`paperSize="9"`, portrait).
+- **Margin narrow** (preset Excel Narrow): left/right 0.25, top/bottom 0.75, header/footer 0.3.
+- **Fit to width** (`fitToWidth="1" fitToHeight="0"`) — semua kolom muat 1 halaman lebar, panjang bebas.
+- **Freeze header row** (`<pane ySplit="1" topLeftCell="A2" state="frozen"/>`) — header tetap kelihatan saat scroll.
+- **AutoFilter** di seluruh range (`<autoFilter ref="A1:K{last}">` / `A1:J{last}`) — dropdown filter tiap kolom.
+- **Horizontal centered** saat dicetak.
+- `<dimension ref="A1:...">` ditambahkan.
+Urutan elemen mengikuti skema OOXML: sheetPr+dimension+sheetViews+sheetFormatPr sebelum cols; autoFilter sebelum mergeCells; printOptions+pageMargins+pageSetup setelah mergeCells.
+
+### Ganti pengabsen pembayaran jadi "ellerick"
+- Update D1 `pay`: `UPDATE pay SET data = json_set(data, '$.penerima', 'ellerick')` — 139 baris, rows_written 139.
+- Sebelum: penerima = "Ellerick Darren Lestyono" (101) + "Petugas LIS" (38). Sesudah: semua "ellerick".
+- Backup `pay` disimpan di `qa/pay_backup.json` (139 baris).
+- Berlaku untuk kolom Penerima di rekap pembayaran XLSX dan tampilan Tagihan.
+
+### Verifikasi produksi v72 (headless Edge, rentang 2026-11-01 s/d 2026-11-18)
+- Rekap log: paperSize 9, margin 0.25, fitToWidth 1, freeze header, autoFilter, horizontalCentered, dimension A1:K142.
+- Rekap pembayaran: sama (A1:J91). Kolom Penerima: 73 sel "ellerick", tidak ada "Petugas LIS" atau "Ellerick Darren" tersisa.
+
+Commit: (lihat git log). Produksi https://mutajawwiz.pages.dev = v72.
