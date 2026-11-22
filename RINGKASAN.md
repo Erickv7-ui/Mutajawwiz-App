@@ -770,3 +770,29 @@ Urutan elemen mengikuti skema OOXML: sheetPr+dimension+sheetViews+sheetFormatPr 
 - Rekap pembayaran: sama (A1:J91). Kolom Penerima: 73 sel "ellerick", tidak ada "Petugas LIS" atau "Ellerick Darren" tersisa.
 
 Commit: (lihat git log). Produksi https://mutajawwiz.pages.dev = v72.
+
+
+## v73 — Tombol Info Log per orang di menu Tagihan (popup)
+
+Setiap baris tagihan di halaman Tagihan (menu 3) sekarang punya tombol **Info** di kolom aksi. Klik → popup nunjukin rincian log pelanggaran orang itu.
+
+### Modal `#loginfo-modal` (index.html)
+- Modal popup biru langit (`#B6D9FC`), max-w-lg, scrollable (max-h 85vh), sticky header.
+- `#loginfo-summary`: nama + stambuk, kelas, kamar, rayon, tanggal pelanggaran, total denda, status (Lunas/Belum/Hidden).
+- `#loginfo-body`: satu kartu per log di balik tagihan itu (kalau digabung >1 log, muncul semua).
+- Tiap kartu log: label `Log N / total`, badge Lunas/Belum, **Pengabsen**, **Tanggal + Waktu**, **Bahasa**, **Ucapan/Keterangan**, **Kamar + Kelas**, dan kalau lunas: tanggal dilunasi + penerima.
+- Tutup via tombol ✕, tombol Tutup, ESC, atau klik backdrop.
+
+### Fungsi `js/spa.js`
+- `openLogInfo(key)`: cari bill via `getConsolidatedTagihan()`, render summary + `bill.logs` ke modal, tampilkan.
+- `closeLogInfo()`: sembunyikan modal.
+- Tombol `Info` ditambah di kolom aksi tiap `<tr>` tagihan (selalu ada, lunas/belum/hidden).
+- ESC listener + backdrop click close didaftarkan di init.
+
+### Verifikasi produksi v73 (headless Edge)
+- 173 tombol Info muncul di halaman Tagihan.
+- Klik tombol pertama → modal muncul, summary: "Fawwazurrasyad Abdullah Anna'Iim (24807) • II C • Ampel (2) Kamar 3 • 2026-11-22 • Rp 2.000 • Belum Lunas".
+- Kartu log: "Log 1/1 • Belum • Pengabsen: Zain Zuhda Taqihaq • Tanggal 2026-11-22 Waktu 06:59:20 • Bahasa Indonesian • Ucapan/Ket: - • Kamar Ampel (2) Kamar 3 • Kelas II C".
+- ESC menutup modal.
+
+Commit: (lihat git log). Produksi https://mutajawwiz.pages.dev = v73.

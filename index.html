@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=72">
-  <link rel="stylesheet" href="css/theme.css?v=72">
+  <link rel="stylesheet" href="css/app.css?v=73">
+  <link rel="stylesheet" href="css/theme.css?v=73">
   <script>
     /* Terapkan tema sebelum paint supaya tidak berkedip */
     (function () {
@@ -1279,6 +1279,24 @@
     </div>
   </div>
 
+  <!-- MODAL 1C: INFO LOG PELANGGARAN -->
+  <div id="loginfo-modal" class="fixed inset-0 bg-black/65 z-50 hidden items-center justify-center p-4 no-print">
+    <div class="box modal-card p-6 max-w-lg w-full space-y-4 bg-white max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b-[2.5px] border-black pb-3 sticky top-0 bg-white">
+        <div class="flex items-center gap-2">
+          <span class="px-2.5 py-0.5 bg-[#B6D9FC] border-2 border-black text-black font-mono-code text-[10px] font-extrabold uppercase">Info</span>
+          <h3 class="text-sm font-extrabold text-black">Info Log Pelanggaran</h3>
+        </div>
+        <button onclick="closeLogInfo()" class="btn py-1 px-2.5 text-xs">✕</button>
+      </div>
+      <div id="loginfo-summary" class="text-xs font-bold bg-[#FFF7DC] border-2 border-black p-3.5 space-y-1 text-black"></div>
+      <div id="loginfo-body" class="space-y-2.5"></div>
+      <div class="flex gap-2.5">
+        <button onclick="closeLogInfo()" class="btn flex-1">Tutup</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL 2: KONFIRMASI AKSI BERBAHAYA -->
   <div id="confirm-modal" class="fixed inset-0 bg-black/65 z-50 hidden items-center justify-center p-4 no-print">
     <div class="box modal-card p-6 max-w-sm w-full space-y-4 bg-white">
@@ -1332,12 +1350,12 @@
     </div>
   </div>
 
-  <script src="js/api.js?v=72"></script>
-  <script src="js/xlsx-writer.js?v=72"></script>
-  <script src="js/rekap.js?v=72"></script>
-  <script src="js/theme.js?v=72"></script>
-  <script src="js/db.js?v=72"></script>
-  <script src="js/auth.js?v=72"></script>
-  <script src="js/spa.js?v=72"></script>
+  <script src="js/api.js?v=73"></script>
+  <script src="js/xlsx-writer.js?v=73"></script>
+  <script src="js/rekap.js?v=73"></script>
+  <script src="js/theme.js?v=73"></script>
+  <script src="js/db.js?v=73"></script>
+  <script src="js/auth.js?v=73"></script>
+  <script src="js/spa.js?v=73"></script>
 </body>
 </html>

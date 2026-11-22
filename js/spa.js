@@ -1360,6 +1360,7 @@
               }
             </td>
             <td class="text-right whitespace-nowrap">
+              <button onclick="openLogInfo('${escapeHtml(b.key)}')" class="btn py-1 px-2 text-[10px]" title="Info log pelanggaran">Info</button>
               ${b.lunas
                 ? `<button onclick="toggleHidden('${escapeHtml(b.key)}')" class="btn ${b.hidden ? 'btn-yellow' : ''} py-1 px-2 text-[10px]" title="Bayar lunas tapi tidak masuk hitung total">${b.hidden ? 'Unhide' : 'Hide'}</button> <button onclick="requestBatalLunas('${escapeHtml(b.key)}')" class="btn py-1 px-2.5 text-[11px]">Batal</button>`
                 : `<button onclick="openLunasModal('${escapeHtml(b.key)}')" class="btn btn-green py-1 px-3 text-[11px]">Lunasi</button> <button onclick="openLunasModal('${escapeHtml(b.key)}', true)" class="btn py-1 px-2 text-[10px]" title="Lunasi sebagai hidden">Hide</button> <button onclick="openKertasModal('${escapeHtml(b.key)}')" class="btn btn-yellow py-1 px-2 text-[10px]" title="Tambah beli kertas hukuman">+ Kertas</button>`
@@ -1663,6 +1664,49 @@
       modal.classList.remove('flex');
       pendingLunasKey = null;
       pendingLunasHidden = false;
+    }
+
+    // ===================== INFO LOG PELANGGARAN =====================
+    function openLogInfo(key) {
+      const bill = getConsolidatedTagihan().find(b => b.key === key);
+      const modal = document.getElementById('loginfo-modal');
+      if (!bill || !modal) return;
+      const summaryEl = document.getElementById('loginfo-summary');
+      const bodyEl = document.getElementById('loginfo-body');
+      summaryEl.innerHTML = `
+        <div>Santri: <b>${escapeHtml(bill.nama)}</b>${bill.stambuk ? ' (' + escapeHtml(bill.stambuk) + ')' : ''}</div>
+        <div>Kelas: <b>${escapeHtml(bill.kelas)}</b> &bull; Kamar: <b>${escapeHtml(bill.kamar)}</b> &bull; Rayon: <b>${escapeHtml(bill.rayon || '-')}</b></div>
+        <div>Tanggal Pelanggaran: <b>${escapeHtml(bill.tgl)}</b></div>
+        <div>Total Denda: <b>${formatRupiah(bill.totalDenda)}</b> &bull; Status: <b>${bill.hidden ? 'Hidden' : bill.lunas ? 'Lunas' : 'Belum Lunas'}</b></div>
+      `;
+      bodyEl.innerHTML = bill.logs.map((log, i) => {
+        const ucapan = (log.ucapan && log.ucapan !== 'None') ? escapeHtml(log.ucapan) : '<span class="text-black/50">-</span>';
+        const waktu = log.waktu || log.ts || log.timestamp || '-';
+        return `
+          <div class="border-2 border-black p-3 space-y-1 ${log.lunas ? 'bg-[#E8F5E9]' : 'bg-[#FFF0F0]'}">
+            <div class="flex items-center justify-between">
+              <span class="font-mono-code text-[10px] font-extrabold uppercase text-black/70">Log ${i + 1} / ${bill.logs.length}</span>
+              <span class="tag ${log.lunas ? 'bg-[#00E676]' : 'bg-[#FF4D4D] text-white'} text-black text-[10px]">${log.lunas ? 'Lunas' : 'Belum'}</span>
+            </div>
+            <div class="text-xs font-bold text-black space-y-0.5">
+              <div>Pengabsen: <b>${escapeHtml(log.pengabsen || '-')}</b></div>
+              <div>Tanggal: <b>${escapeHtml(log.tgl)}</b> &bull; Waktu: <b>${escapeHtml(String(waktu))}</b></div>
+              <div>Bahasa: <b>${escapeHtml(log.bahasa || '-')}</b> &bull; Ucapan/Ket: <b>${ucapan}</b></div>
+              <div>Kamar: <b>${escapeHtml(log.kamar || '-')}</b> &bull; Kelas: <b>${escapeHtml(log.kelas || '-')}</b></div>
+              ${log.lunas ? `<div>Dilunasi: <b>${escapeHtml(log.tgl_lunas || '-')}</b> &bull; Penerima: <b>${escapeHtml(log.penerima || '-')}</b></div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeLogInfo() {
+      const modal = document.getElementById('loginfo-modal');
+      if (!modal) return;
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
     }
 
     // ===================== BELI KERTAS HUKUMAN =====================
@@ -2286,6 +2330,20 @@
         if (pendingConfirmCallback) pendingConfirmCallback();
         closeConfirmModal();
       });
+
+      // Tutup modal info log via ESC atau klik backdrop
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const m = document.getElementById('loginfo-modal');
+          if (m && !m.classList.contains('hidden')) closeLogInfo();
+        }
+      });
+      const loginfoOverlay = document.getElementById('loginfo-modal');
+      if (loginfoOverlay) {
+        loginfoOverlay.addEventListener('click', (e) => {
+          if (e.target === loginfoOverlay) closeLogInfo();
+        });
+      }
 
       // Laporan & Export buttons
       document.getElementById('btn-ekspor-hari-ini').addEventListener('click', () => {
