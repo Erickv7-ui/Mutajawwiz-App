@@ -18,7 +18,7 @@ function driverName() { return 'd1'; }
 function hasDb() { return !!_rt.d1; }
 
 // versi kode server — dipakai untuk memastikan deploy sudah jalan
-const SERVER_VERSION = 'v73';
+const SERVER_VERSION = 'v74';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'LIS26-27';
 // PIN Pusat (dipakai UI untuk buka sesi admin). Server menerima PIN ini juga
@@ -451,9 +451,9 @@ const handler = async (req, res) => {
           const rec = {
             id_log: id,
             id,
-            timestamp: ts,
+            timestamp: bodyItem.timestamp || ts,
             tgl: date,
-            waktu: ts.split(' ')[1] || '',
+            waktu: bodyItem.waktu || ts.split(' ')[1] || '',
             pengabsen: bodyItem.pengabsen || 'Admin',
             stambuk: bodyItem.stambuk || '',
             nama: bodyItem.nama,
@@ -499,10 +499,10 @@ const handler = async (req, res) => {
       const id = 'LOG-' + Date.now() + '-' + randomBytes(3).toString('hex').toUpperCase();
       const rec = {
         id_log: id,
-        id: id,
-        timestamp: ts,
+        id,
+        timestamp: body.timestamp || ts,
         tgl: date,
-        waktu: ts.split(' ')[1] || '',
+        waktu: body.waktu || ts.split(' ')[1] || '',
         pengabsen: body.pengabsen || 'Admin',
         stambuk: body.stambuk || '',
         nama: body.nama,
