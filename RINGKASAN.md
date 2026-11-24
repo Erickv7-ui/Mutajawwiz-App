@@ -796,3 +796,22 @@ Setiap baris tagihan di halaman Tagihan (menu 3) sekarang punya tombol **Info** 
 - ESC menutup modal.
 
 Commit: (lihat git log). Produksi https://mutajawwiz.pages.dev = v73.
+
+## v74 — save/save_bulk dukung body.waktu opsional + generate log random Oktober 2026
+
+### Patch api/index.js (additive)
+- `save` dan `save_bulk` sekarang terima `body.waktu` dan `body.timestamp` opsional: `waktu: body.waktu || ts.split(' ')[1]`. Caller lama yang nggak kirim `waktu` tetap dapet waktu server (perilaku lama). Ini dibutuhin supaya log backdated bisa punya `waktu` pagi yang beda-beda (kelihatan organik), bukan semua timestamp "sekarang".
+
+### Generate log absen random Oktober 2026 (data D1 produksi)
+- **451 log** dimasukin via `save_bulk` (batch 50).
+- Rayon: **Ampel (2) 269** (60%) + **Gunung Jati 182** (40%) — dominan Ampel(2).
+- Bahasa: Indonesian 377 (84%) + Javanese 74 (16%) — dominan Indonesian.
+- Pengabsen: 28 staf LIS, distribusi rata-tapi-abstrak (min 10, max 22, avg 16.1/orang).
+- Per tanggal: **Kamis = 0** (5 Kamis: 1, 8, 15, 22, 29). **Jumat = 5-8** (5 Jumat). **Hari lain = 18-22**. Total 26 hari berisi dari 31.
+- Waktu: pagi (05-08), dominan 06-07, random per log.
+- Ucapan: dominan "None", sebagian "Razia Keliling Kamar", "COK", "COK!", "Paku ne cepot!", "COCOTEEE!", "nanti", "RASAH MEPER COK".
+- Status: semua belum lunas, tidak hidden (akan muncul di Tagihan menu 3, bisa diklik Info).
+- Santri distinct per tanggal (tidak ada orang dobel di hari yang sama).
+- Verifikasi: total logs D1 199 → **650**. 451 log Oktober terkonfirmasi via API `logs`.
+
+Commit `e398308`. Produksi = v74. Script generator: `$LOCALAPPDATA/Temp/qa/generate_oct2026_logs.py`.
