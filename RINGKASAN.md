@@ -815,3 +815,17 @@ Commit: (lihat git log). Produksi https://mutajawwiz.pages.dev = v73.
 - Verifikasi: total logs D1 199 → **650**. 451 log Oktober terkonfirmasi via API `logs`.
 
 Commit `e398308`. Produksi = v74. Script generator: `$LOCALAPPDATA/Temp/qa/generate_oct2026_logs.py`.
+
+## v74-data (tanpa bump versi) — Oktober logs hidden + penerima full Ellerick
+
+### Hidden bulk Oktober 2026 (361 records)
+- API `hidden_bulk` 4 batch (100+100+100+61 items), body `{items: [{tgl,stambuk,nama}], hidden:true, password, penerima: "Ellerick Darren Lestyono"}`.
+- Hasil: 361 pay records baru dibuat dengan `hidden=true`, `lunas=true`, `penerima="Ellerick Darren Lestyono"`.
+- Semua tagihan dari log random Oktober 2026 sekarang tidak masuk hitungan total (hidden), tapi tetap muncul di menu Tagihan.
+
+### Update penerima lama (139 records)
+- SQL D1: `UPDATE pay SET data = json_set(data, '$.penerima', 'Ellerick Darren Lestyono') WHERE json_extract(data, '$.penerima') = 'ellerick'`.
+- 139 rows changed. Sekarang semua pay record (361+139=500) punya penerima `Ellerick Darren Lestyono`.
+- XLSX rekap pembayaran akan menampilkan nama lengkap.
+
+Verifikasi: dump pay = 500, penerima distribution = `Ellerick Darren Lestyono: 500`, Oktober hidden = 361.
